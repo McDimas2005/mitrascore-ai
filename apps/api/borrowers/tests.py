@@ -1,7 +1,8 @@
 from decimal import Decimal
+import tempfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import User, UserRole
@@ -12,6 +13,10 @@ from evidence.models import EvidenceItem, EvidenceType, SourceType
 from scoring.services import run_deepscore, run_instant_check
 
 
+TEST_MEDIA_ROOT = tempfile.mkdtemp(prefix="mitrascore-test-media-")
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
 class MitraScoreFlowTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user("owner@test.local", "Demo123!", full_name="Owner", role=UserRole.UMKM_OWNER)
@@ -120,3 +125,163 @@ class MitraScoreFlowTests(TestCase):
         result = process_evidence_item(item)
         self.assertEqual(result.extracted_fields["vendor"], "Pemasok Sembako Subang")
         self.assertIn("pembelian stok berulang", result.detected_business_indicators["indicators"])
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class MitraScoreEndToEndApiTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user("umkm@mitrascore.demo", "Demo123!", full_name="Ibu Demo", role=UserRole.UMKM_OWNER)
+        self.agent = User.objects.create_user("fieldagent@mitrascore.demo", "Demo123!", full_name="Agen Demo", role=UserRole.FIELD_AGENT)
+        self.analyst = User.objects.create_user("analyst@mitrascore.demo", "Demo123!", full_name="Analis Demo", role=UserRole.ANALYST)
+        self.client = APIClient()
+
+    def login(self, email):
+        response = self.client.post("/api/auth/login/", {"email": email, "password": "Demo123!"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+        return response.data["user"]
+
+    def upload_and_process(self, profile_id, filename, evidence_type, source_type="SELF_UPLOADED", note=""):
+        upload = SimpleUploadedFile(filename, b"demo evidence", content_type="application/octet-stream")
+        response = self.client.post(
+            f"/api/borrower-profiles/{profile_id}/evidence/",
+            {"evidence_type": evidence_type, "source_type": source_type, "field_agent_note": note, "file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        item_id = response.data["id"]
+        response = self.client.post(f"/api/evidence/{item_id}/process/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["ai_status"], "PROCESSED")
+        return item_id
+
+    def test_full_umkm_analyst_and_field_agent_demo_flow(self):
+        # 1. Login as UMKM Owner
+        owner_user = self.login("umkm@mitrascore.demo")
+        self.assertEqual(owner_user["role"], "UMKM_OWNER")
+
+        # 2. Open UMKM Self-Onboarding Mode, 3. Read and accept consent, 4. Fill business profile
+        response = self.client.post(
+            "/api/borrower-profiles/",
+            {
+                "business_name": "Warung E2E Ibu Sari",
+                "business_category": "Warung sembako",
+                "business_duration_months": 30,
+                "financing_purpose": "Menambah stok inventori harian",
+                "requested_amount": "5000000",
+                "estimated_monthly_revenue": "12000000",
+                "estimated_monthly_expense": "8500000",
+                "simple_cashflow_note": "Omzet harian Rp350.000 sampai Rp500.000.",
+                "business_note": "No collateral, no formal bank credit history, no formal financial statement.",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        profile_id = response.data["id"]
+
+        response = self.client.post(f"/api/borrower-profiles/{profile_id}/consent/", {"consent_given": True}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertTrue(response.data["consent_given"])
+
+        # Assign this case to the demo field agent to mirror an assisted case in the local MVP.
+        profile = BorrowerProfile.objects.get(pk=profile_id)
+        profile.assisted_by = self.agent
+        profile.save(update_fields=["assisted_by"])
+
+        # 5. Upload business photo and transaction evidence
+        self.upload_and_process(profile_id, "business_photo_warung_e2e.jpg", EvidenceType.BUSINESS_PHOTO)
+        self.upload_and_process(profile_id, "supplier_receipt_beras_1.pdf", EvidenceType.RECEIPT)
+        self.upload_and_process(profile_id, "supplier_receipt_minyak_2.pdf", EvidenceType.RECEIPT)
+        self.upload_and_process(profile_id, "qris_screenshot_e2e.png", EvidenceType.QRIS_SCREENSHOT)
+
+        # 6. Run Instant Evidence Check, 7. Complete missing data if needed
+        response = self.client.post(f"/api/borrower-profiles/{profile_id}/instant-check/", {}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        if not response.data["can_submit_to_analyst"]:
+            patch = self.client.patch(
+                f"/api/borrower-profiles/{profile_id}/",
+                {"simple_cashflow_note": "Omzet dan biaya sudah dilengkapi dari catatan harian."},
+                format="json",
+            )
+            self.assertEqual(patch.status_code, 200, patch.content)
+            self.upload_and_process(profile_id, "daily_sales_note_e2e.txt", EvidenceType.SALES_NOTE)
+            response = self.client.post(f"/api/borrower-profiles/{profile_id}/instant-check/", {}, format="json")
+            self.assertEqual(response.status_code, 201, response.content)
+        self.assertTrue(response.data["can_submit_to_analyst"], response.data)
+
+        # 8. Submit case to Analyst Dashboard
+        response = self.client.post(f"/api/borrower-profiles/{profile_id}/submit-to-analyst/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["status"], "READY_FOR_ANALYST")
+
+        # 9. Login as Analyst, 10. Open submitted case
+        analyst_user = self.login("analyst@mitrascore.demo")
+        self.assertEqual(analyst_user["role"], "ANALYST")
+        response = self.client.get("/api/analyst/cases/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(any(case["id"] == profile_id for case in response.data))
+
+        response = self.client.get(f"/api/analyst/cases/{profile_id}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertGreaterEqual(len(response.data["evidence_items"]), 4)
+        self.assertIsNotNone(response.data["consent"])
+
+        # 11. Run DeepScore Review
+        response = self.client.post(f"/api/analyst/cases/{profile_id}/deepscore/", {}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        review_id = response.data["id"]
+
+        # 12. Check score, red flags, positive signals, confidence, audit trail, Responsible AI data
+        self.assertGreaterEqual(response.data["score"], 70)
+        self.assertLessEqual(response.data["score"], 85)
+        self.assertEqual(response.data["readiness_band"], "PROMISING")
+        self.assertIn(response.data["confidence_level"], ["MEDIUM", "HIGH"])
+        self.assertTrue(response.data["positive_signals"])
+        self.assertTrue(response.data["red_flags"])
+        self.assertIn("repayment_capacity", response.data["score_breakdown"])
+        self.assertIn("risk_compliance", response.data["score_breakdown"])
+        self.assertTrue(any("AI tidak menyetujui" in reason for reason in response.data["main_reasons"]))
+
+        response = self.client.get(f"/api/borrower-profiles/{profile_id}/audit-logs/")
+        self.assertEqual(response.status_code, 200, response.content)
+        actions = {log["action"] for log in response.data}
+        self.assertIn("CONSENT_RECORDED", actions)
+        self.assertIn("SUBMITTED_TO_ANALYST", actions)
+        self.assertIn("DEEPSCORE_REVIEW_RUN", actions)
+
+        response = self.client.patch(
+            f"/api/analyst/reviews/{review_id}/decision/",
+            {"final_human_decision": "NEEDS_MORE_DATA", "analyst_notes": "Minta dua bukti transaksi tambahan."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["final_human_decision"], "NEEDS_MORE_DATA")
+
+        # Field Agent Mode: 1. Login, 2. Open assisted case
+        agent_user = self.login("fieldagent@mitrascore.demo")
+        self.assertEqual(agent_user["role"], "FIELD_AGENT")
+        response = self.client.get("/api/borrower-profiles/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(any(case["id"] == profile_id for case in response.data))
+
+        # 3. Add observation note, 4. Upload or verify evidence, 5. Mark agent-assisted/verified
+        item_id = self.upload_and_process(
+            profile_id,
+            "agent_verified_supplier_note_e2e.pdf",
+            EvidenceType.SUPPLIER_NOTE,
+            SourceType.AGENT_ASSISTED,
+            "Agen melihat stok barang dan nota pemasok saat kunjungan.",
+        )
+        response = self.client.patch(
+            f"/api/evidence/{item_id}/source-type/",
+            {"source_type": "AGENT_VERIFIED", "field_agent_note": "Bukti diverifikasi agen di lokasi usaha."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["source_type"], "AGENT_VERIFIED")
+        self.assertEqual(response.data["field_agent_note"], "Bukti diverifikasi agen di lokasi usaha.")
+
+        # 6. Run Instant Evidence Check again
+        response = self.client.post(f"/api/borrower-profiles/{profile_id}/instant-check/", {}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertTrue(response.data["can_submit_to_analyst"])

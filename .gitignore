@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 db.sqlite3
 media/evidence/
+apps/api/db.sqlite3
+apps/api/media/
 node_modules/
 .next/
 .env
