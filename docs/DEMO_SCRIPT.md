@@ -10,6 +10,9 @@
 6. Run Instant Evidence Check.
 7. Submit to analyst when eligible.
 
+For a blank-start self-test, log in as `umkm2@mitrascore.demo` with password `Demo123!` and create the borrower profile from scratch.
+If the owner needs assisted onboarding, click `Minta Bantuan Agen`; this creates a draft assisted case that appears in the Field Agent dashboard.
+
 ## 2. Field Agent
 
 1. Log in as `fieldagent@mitrascore.demo`.
@@ -31,3 +34,15 @@
 ## Expected Demo Outcome
 
 Warung Ibu Sari should score around 74/100, readiness band `PROMISING`, confidence `MEDIUM`, with suggested action to request two additional transaction proofs and verify financing purpose before final review.
+
+## Reset Demo State
+
+Before repeating a full demo from the initial state:
+
+```bash
+cd apps/api
+. .venv/bin/activate
+python manage.py reset_local_demo --yes
+```
+
+For Docker/Postgres, prefix the same command with `DATABASE_URL=postgres://mitrascore:mitrascore@localhost:5432/mitrascore`.

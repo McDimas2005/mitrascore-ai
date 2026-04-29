@@ -75,3 +75,21 @@ class EvidenceProcessView(APIView):
         result = process_evidence_item(item)
         log_action(request.user, "EVIDENCE_PROCESSED", item, {"confidence_score": result.confidence_score})
         return Response(EvidenceItemSerializer(item, context={"request": request}).data)
+
+
+class EvidenceDetailView(APIView):
+    def delete(self, request, pk):
+        item = get_object_or_404(EvidenceItem, pk=pk)
+        if not can_access_profile(request.user, item.borrower_profile):
+            raise PermissionDenied("You cannot access this borrower profile.")
+        if item.borrower_profile.reviews.exists() and request.user.role != UserRole.ADMIN:
+            raise PermissionDenied("Evidence from reviewed cases can only be deleted by admin in this local demo.")
+        metadata = {
+            "borrower_profile": item.borrower_profile_id,
+            "original_filename": item.original_filename,
+            "evidence_type": item.evidence_type,
+            "source_type": item.source_type,
+        }
+        log_action(request.user, "EVIDENCE_DELETED", item, metadata)
+        item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

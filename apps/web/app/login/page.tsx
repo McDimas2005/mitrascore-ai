@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { login, setSession } from "@/lib/api";
 import { ErrorMessage } from "@/components/State";
 
@@ -37,6 +38,9 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-paper px-4">
       <section className="w-full max-w-md rounded-md border border-black/10 bg-white p-5">
+        <Link href="/" className="focus-ring mb-4 inline-flex items-center gap-2 rounded-md border border-black/10 px-3 py-2 text-sm font-medium">
+          <ArrowLeft size={16} /> Kembali
+        </Link>
         <h1 className="text-2xl font-semibold">Login Demo</h1>
         <p className="mt-1 text-sm text-black/60">Gunakan salah satu akun demo. Password semua akun: Demo123!</p>
         <div className="mt-4 grid grid-cols-2 gap-2">

@@ -2,16 +2,33 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { LogOut } from "lucide-react";
+import { ArrowLeft, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { getUser, logout } from "@/lib/api";
 import type { User } from "@/types/api";
 
 export function Shell({ children, title }: { children: React.ReactNode; title: string }) {
   const [user, setUser] = useState<User | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     setUser(getUser());
   }, []);
+
+  function fallbackPath() {
+    if (user?.role === "FIELD_AGENT") return "/field-agent";
+    if (user?.role === "ANALYST" || user?.role === "ADMIN") return "/analyst";
+    if (user?.role === "UMKM_OWNER") return "/owner";
+    return "/";
+  }
+
+  function goBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push(fallbackPath());
+  }
 
   return (
     <main className="min-h-screen bg-paper">
@@ -36,7 +53,15 @@ export function Shell({ children, title }: { children: React.ReactNode; title: s
         </div>
       </header>
       <section className="mx-auto max-w-6xl px-4 py-6">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-2xl font-semibold">{title}</h1>
+          <button
+            className="focus-ring inline-flex items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-3 py-2 text-sm font-medium"
+            onClick={goBack}
+          >
+            <ArrowLeft size={16} /> Kembali
+          </button>
+        </div>
         {children}
       </section>
     </main>

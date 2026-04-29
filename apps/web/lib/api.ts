@@ -31,6 +31,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   if (!(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (response.status === 204) return undefined as T;
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: "Terjadi kesalahan." }));
     throw new Error(detail.detail || JSON.stringify(detail));

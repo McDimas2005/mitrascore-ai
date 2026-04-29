@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClipboardCheck, RefreshCw } from "lucide-react";
-import { apiFetch } from "@/lib/api";
-import type { BorrowerProfile, Review } from "@/types/api";
+import { ClipboardCheck, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { apiFetch, getUser } from "@/lib/api";
+import type { BorrowerProfile, Review, User } from "@/types/api";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ScoreCard } from "@/components/ScoreCard";
 import { Empty, ErrorMessage, Loading } from "@/components/State";
@@ -17,6 +17,7 @@ export default function AnalystPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [decision, setDecision] = useState("PENDING");
   const [notes, setNotes] = useState("");
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -41,6 +42,7 @@ export default function AnalystPage() {
   }
 
   useEffect(() => {
+    setUser(getUser());
     loadCases();
   }, []);
 
@@ -67,6 +69,37 @@ export default function AnalystPage() {
       await openCase(selected.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan keputusan manusia.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetDecision() {
+    setDecision("PENDING");
+    const review = selected?.reviews?.[0];
+    if (!review) return;
+    setBusy(true);
+    try {
+      await apiFetch(`/analyst/reviews/${review.id}/decision/`, { method: "PATCH", body: JSON.stringify({ final_human_decision: "PENDING", analyst_notes: "" }) });
+      setNotes("");
+      await openCase(selected.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membatalkan keputusan manusia.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSelectedCase() {
+    if (!selected || !window.confirm("Hapus kasus ini dari demo lokal?")) return;
+    setBusy(true);
+    try {
+      await apiFetch(`/borrower-profiles/${selected.id}/`, { method: "DELETE" });
+      setSelected(null);
+      setLogs([]);
+      await loadCases();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menghapus kasus.");
     } finally {
       setBusy(false);
     }
@@ -100,9 +133,16 @@ export default function AnalystPage() {
                   <h2 className="text-xl font-semibold">{selected.business_name}</h2>
                   <p className="mt-1 text-sm text-black/60">{selected.financing_purpose}</p>
                 </div>
-                <button disabled={busy} onClick={deepscore} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
-                  <RefreshCw size={16} /> DeepScore
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button disabled={busy} onClick={deepscore} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                    <RefreshCw size={16} /> DeepScore
+                  </button>
+                  {user?.role === "ADMIN" && (
+                    <button disabled={busy} onClick={deleteSelectedCase} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
+                      <Trash2 size={16} /> Hapus
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
             {review && <ScoreCard review={review} />}
@@ -136,9 +176,14 @@ export default function AnalystPage() {
                   {["PENDING", "NEEDS_MORE_DATA", "RECOMMENDED_FOR_REVIEW", "NOT_RECOMMENDED_AT_THIS_STAGE"].map((item) => <option key={item}>{item}</option>)}
                 </select>
                 <textarea className="focus-ring mt-2 min-h-24 w-full rounded-md border border-black/15 px-3 py-2 text-sm" placeholder="Catatan analis" value={notes} onChange={(event) => setNotes(event.target.value)} />
-                <button disabled={!review || busy} onClick={saveDecision} className="focus-ring mt-2 inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
-                  <ClipboardCheck size={16} /> Simpan
-                </button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button disabled={!review || busy} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                    <ClipboardCheck size={16} /> Simpan
+                  </button>
+                  <button disabled={!review || busy} onClick={resetDecision} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
+                    <RotateCcw size={16} /> Undo ke Pending
+                  </button>
+                </div>
               </Panel>
               <Panel title="Audit trail">
                 <div className="space-y-2 text-sm">

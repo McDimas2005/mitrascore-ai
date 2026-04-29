@@ -126,6 +126,77 @@ class MitraScoreFlowTests(TestCase):
         self.assertEqual(result.extracted_fields["vendor"], "Pemasok Sembako Subang")
         self.assertIn("pembelian stok berulang", result.detected_business_indicators["indicators"])
 
+    def test_umkm_owner_can_request_field_agent_assistance(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post("/api/borrower-profiles/request-field-agent-assist/", {}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.data["owner"], self.owner.id)
+        self.assertEqual(response.data["assisted_by_detail"]["id"], self.agent.id)
+        self.assertTrue(response.data["business_name"].startswith("Permintaan Bantuan Agen - "))
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="FIELD_AGENT_ASSISTANCE_REQUESTED",
+                entity_id=str(response.data["id"]),
+            ).exists()
+        )
+
+        self.client.force_authenticate(self.agent)
+        response = self.client.get("/api/borrower-profiles/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(any(profile["business_name"].startswith("Permintaan Bantuan Agen - ") for profile in response.data))
+
+    def test_umkm_owner_can_request_field_agent_assistance_for_existing_draft(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            "/api/borrower-profiles/request-field-agent-assist/",
+            {
+                "profile_id": self.profile.id,
+                "store_address": "Jl. Contoh No. 12, dekat pasar",
+                "contact_phone": "0800-0000-DEMO",
+                "preferred_visit_time": "Senin pagi",
+                "assistance_note": "Butuh bantuan foto bukti dan cek nota.",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.assisted_by, self.agent)
+        self.assertIn("Jl. Contoh No. 12", self.profile.business_note)
+        self.assertIn("Senin pagi", self.profile.business_note)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="FIELD_AGENT_ASSISTANCE_REQUESTED",
+                entity_id=str(self.profile.id),
+                metadata__store_address="Jl. Contoh No. 12, dekat pasar",
+            ).exists()
+        )
+
+    def test_owner_can_revoke_consent_delete_evidence_and_profile(self):
+        self.give_consent()
+        self.client.force_authenticate(self.owner)
+        item = EvidenceItem.objects.create(
+            borrower_profile=self.profile,
+            evidence_type=EvidenceType.RECEIPT,
+            source_type=SourceType.SELF_UPLOADED,
+            file=SimpleUploadedFile("delete_me.pdf", b"demo"),
+            original_filename="delete_me.pdf",
+            mime_type="application/pdf",
+            file_size=4,
+            uploaded_by=self.owner,
+        )
+        response = self.client.delete(f"/api/evidence/{item.id}/")
+        self.assertEqual(response.status_code, 204, response.content)
+        self.assertFalse(EvidenceItem.objects.filter(pk=item.id).exists())
+
+        response = self.client.post(f"/api/borrower-profiles/{self.profile.id}/consent/", {"consent_given": False}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.status, "DRAFT")
+
+        response = self.client.delete(f"/api/borrower-profiles/{self.profile.id}/")
+        self.assertEqual(response.status_code, 204, response.content)
+        self.assertFalse(BorrowerProfile.objects.filter(pk=self.profile.id).exists())
+
 
 @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
 class MitraScoreEndToEndApiTests(TestCase):
@@ -214,6 +285,14 @@ class MitraScoreEndToEndApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data["status"], "READY_FOR_ANALYST")
 
+        response = self.client.post(f"/api/borrower-profiles/{profile_id}/undo-submit-to-analyst/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["status"], "NEEDS_COMPLETION")
+
+        response = self.client.post(f"/api/borrower-profiles/{profile_id}/submit-to-analyst/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["status"], "READY_FOR_ANALYST")
+
         # 9. Login as Analyst, 10. Open submitted case
         analyst_user = self.login("analyst@mitrascore.demo")
         self.assertEqual(analyst_user["role"], "ANALYST")
@@ -247,6 +326,7 @@ class MitraScoreEndToEndApiTests(TestCase):
         actions = {log["action"] for log in response.data}
         self.assertIn("CONSENT_RECORDED", actions)
         self.assertIn("SUBMITTED_TO_ANALYST", actions)
+        self.assertIn("SUBMISSION_UNDONE", actions)
         self.assertIn("DEEPSCORE_REVIEW_RUN", actions)
 
         response = self.client.patch(

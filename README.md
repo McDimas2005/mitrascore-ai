@@ -38,9 +38,12 @@ Open the Next.js URL printed by `npm run dev`. The frontend calls the API at `ht
 All demo passwords are `Demo123!`.
 
 - `umkm@mitrascore.demo`
+- `umkm2@mitrascore.demo` fresh UMKM account with no seeded profile
 - `fieldagent@mitrascore.demo`
 - `analyst@mitrascore.demo`
 - `admin@mitrascore.demo`
+
+Use `umkm2@mitrascore.demo` when you want to test the flow from a blank UMKM account.
 
 ## Docker Postgres
 
@@ -55,6 +58,34 @@ Then run the backend with:
 ```bash
 DATABASE_URL=postgres://mitrascore:mitrascore@localhost:5432/mitrascore python manage.py migrate
 ```
+
+## Reset Local Demo Data
+
+Use this when you want to return the app to the starter state: demo users, Ibu Sari seeded case, and a blank `umkm2@mitrascore.demo` account.
+
+SQLite fallback:
+
+```bash
+cd apps/api
+. .venv/bin/activate
+python manage.py reset_local_demo --yes
+```
+
+Docker/Postgres:
+
+```bash
+cd apps/api
+. .venv/bin/activate
+DATABASE_URL=postgres://mitrascore:mitrascore@localhost:5432/mitrascore python manage.py reset_local_demo --yes
+```
+
+By default this also deletes local uploaded media under `apps/api/media`. To keep media files:
+
+```bash
+python manage.py reset_local_demo --yes --keep-media
+```
+
+The command is intentionally blocked when `DEBUG=False`.
 
 ## Tests
 

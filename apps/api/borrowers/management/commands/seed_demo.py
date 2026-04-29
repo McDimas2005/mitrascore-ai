@@ -20,6 +20,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         users = {
             "umkm@mitrascore.demo": ("Ibu Sari", UserRole.UMKM_OWNER),
+            "umkm2@mitrascore.demo": ("Pak Andi Test UMKM", UserRole.UMKM_OWNER),
             "fieldagent@mitrascore.demo": ("Budi Field Agent", UserRole.FIELD_AGENT),
             "analyst@mitrascore.demo": ("Rina Credit Analyst", UserRole.ANALYST),
             "admin@mitrascore.demo": ("Admin MitraScore", UserRole.ADMIN),

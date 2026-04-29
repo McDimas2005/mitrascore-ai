@@ -57,6 +57,74 @@ class BorrowerProfileListCreateView(APIView):
         return Response(BorrowerProfileSerializer(profile).data, status=status.HTTP_201_CREATED)
 
 
+class RequestFieldAgentAssistView(APIView):
+    def post(self, request):
+        if request.user.role != UserRole.UMKM_OWNER:
+            raise PermissionDenied("Only UMKM owners can request field agent assistance.")
+        agent = User.objects.filter(role=UserRole.FIELD_AGENT, is_active=True).order_by("id").first()
+        if not agent:
+            raise ValidationError("No active field agent is available.")
+        visit_info = {
+            "store_address": request.data.get("store_address", "").strip(),
+            "contact_phone": request.data.get("contact_phone", "").strip(),
+            "preferred_visit_time": request.data.get("preferred_visit_time", "").strip(),
+            "assistance_note": request.data.get("assistance_note", "").strip(),
+        }
+        profile_id = request.data.get("profile_id")
+        profile = None
+        if profile_id:
+            profile = get_object_or_404(BorrowerProfile, pk=profile_id, owner=request.user)
+            if profile.reviews.exists():
+                raise ValidationError("Reviewed cases cannot request new field agent assistance.")
+        if not profile:
+            profile = (
+                BorrowerProfile.objects.filter(
+                    owner=request.user,
+                    created_by=request.user,
+                    assisted_by=agent,
+                    status=BorrowerStatus.DRAFT,
+                    business_name__startswith="Permintaan Bantuan Agen - ",
+                )
+                .order_by("-created_at")
+                .first()
+            )
+        created = False
+        if not profile:
+            profile = BorrowerProfile.objects.create(
+                owner=request.user,
+                business_name=request.data.get("business_name") or f"Permintaan Bantuan Agen - {request.user.full_name}",
+                business_category="",
+                financing_purpose="Meminta bantuan field agent untuk melengkapi onboarding UMKM.",
+                simple_cashflow_note="",
+                business_note="",
+                created_by=request.user,
+                assisted_by=agent,
+                status=BorrowerStatus.DRAFT,
+            )
+            created = True
+        previous_note = profile.business_note.strip()
+        visit_note = (
+            "Permintaan bantuan agen:\n"
+            f"- Alamat toko/lokasi: {visit_info['store_address'] or 'Belum diisi'}\n"
+            f"- Kontak/WhatsApp: {visit_info['contact_phone'] or 'Belum diisi'}\n"
+            f"- Waktu kunjungan yang diharapkan: {visit_info['preferred_visit_time'] or 'Belum diisi'}\n"
+            f"- Kebutuhan bantuan: {visit_info['assistance_note'] or 'Membutuhkan bantuan untuk melengkapi profil dan bukti usaha.'}"
+        )
+        if previous_note and "Permintaan bantuan agen:" not in previous_note:
+            profile.business_note = f"{visit_note}\n\nCatatan usaha sebelumnya:\n{previous_note}"
+        else:
+            profile.business_note = visit_note
+        profile.assisted_by = agent
+        profile.save(update_fields=["business_note", "assisted_by", "updated_at"])
+        log_action(
+            request.user,
+            "FIELD_AGENT_ASSISTANCE_REQUESTED",
+            profile,
+            {"assisted_by": agent.id, "assisted_by_email": agent.email, "created": created, **visit_info},
+        )
+        return Response(BorrowerProfileSerializer(profile).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
 class BorrowerProfileDetailView(APIView):
     def get_object(self, request, pk):
         profile = get_object_or_404(BorrowerProfile, pk=pk)
@@ -74,6 +142,17 @@ class BorrowerProfileDetailView(APIView):
         serializer.save()
         log_action(request.user, "BORROWER_PROFILE_UPDATED", profile, {"fields": list(serializer.validated_data.keys())})
         return Response(BorrowerProfileSerializer(profile).data)
+
+    def delete(self, request, pk):
+        profile = self.get_object(request, pk)
+        if profile.reviews.exists() and request.user.role != UserRole.ADMIN:
+            raise PermissionDenied("Reviewed cases can only be deleted by admin in this local demo.")
+        if request.user.role == UserRole.ANALYST:
+            raise PermissionDenied("Analysts cannot delete borrower profiles.")
+        metadata = {"business_name": profile.business_name, "status": profile.status}
+        log_action(request.user, "BORROWER_PROFILE_DELETED", profile, metadata)
+        profile.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ConsentView(APIView):
@@ -104,6 +183,9 @@ class ConsentView(APIView):
         )
         if consent.consent_given:
             profile.status = BorrowerStatus.CONSENTED
+            profile.save(update_fields=["status", "updated_at"])
+        else:
+            profile.status = BorrowerStatus.DRAFT
             profile.save(update_fields=["status", "updated_at"])
         log_action(request.user, "CONSENT_RECORDED", profile, {"consent_given": consent.consent_given})
         return Response(ConsentRecordSerializer(consent).data, status=status.HTTP_201_CREATED)
@@ -148,6 +230,21 @@ class SubmitToAnalystView(APIView):
         profile.status = BorrowerStatus.READY_FOR_ANALYST
         profile.save(update_fields=["status", "updated_at"])
         log_action(request.user, "SUBMITTED_TO_ANALYST", profile, {})
+        return Response(BorrowerProfileSerializer(profile).data)
+
+
+class UndoSubmitToAnalystView(APIView):
+    def post(self, request, pk):
+        profile = get_object_or_404(BorrowerProfile, pk=pk)
+        if not can_access_profile(request.user, profile):
+            raise PermissionDenied("You cannot access this borrower profile.")
+        if profile.reviews.exists():
+            raise ValidationError("Cannot undo submission after DeepScore Review has been created.")
+        if profile.status not in {BorrowerStatus.READY_FOR_ANALYST, BorrowerStatus.UNDER_REVIEW}:
+            raise ValidationError("Only submitted cases can be pulled back.")
+        profile.status = BorrowerStatus.NEEDS_COMPLETION
+        profile.save(update_fields=["status", "updated_at"])
+        log_action(request.user, "SUBMISSION_UNDONE", profile, {})
         return Response(BorrowerProfileSerializer(profile).data)
 
 
