@@ -8,6 +8,7 @@ import type { BorrowerProfile } from "@/types/api";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
+import { VerificationReadinessPanel } from "@/components/VerificationReadinessPanel";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 export default function OwnerDashboard() {
@@ -115,6 +116,9 @@ export default function OwnerDashboard() {
             </div>
             <div className="mt-5">
               <WorkflowPanel profile={profile} role="UMKM_OWNER" />
+            </div>
+            <div className="mt-5">
+              <VerificationReadinessPanel profile={profile} />
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <Metric label="Kelengkapan" value={`${check?.data_completeness_score ?? 0}%`} />

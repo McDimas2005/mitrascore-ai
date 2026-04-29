@@ -68,6 +68,7 @@ class MitraScoreFlowTests(TestCase):
                 mime_type="application/octet-stream",
                 file_size=4,
                 uploaded_by=self.owner,
+                field_agent_note="Bukti diverifikasi agen saat kunjungan." if source_type == SourceType.AGENT_VERIFIED else "",
             )
             process_evidence_item(item)
 
@@ -104,6 +105,41 @@ class MitraScoreFlowTests(TestCase):
         self.assertIn("risk_compliance", review.score_breakdown)
         self.assertGreaterEqual(review.score, 70)
         self.assertLessEqual(review.score, 80)
+
+    def test_approval_requires_verified_decision_critical_evidence(self):
+        self.give_consent()
+        self.add_processed_evidence()
+        run_instant_check(self.profile)
+        review = run_deepscore(self.profile, self.analyst)
+        self.client.force_authenticate(self.analyst)
+
+        response = self.client.get(f"/api/borrower-profiles/{self.profile.id}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        readiness = response.data["verification_readiness"]
+        self.assertFalse(readiness["approval_ready"])
+        self.assertEqual(readiness["verified_cashflow_count"], 2)
+        self.assertEqual(readiness["verified_business_presence_count"], 0)
+
+        response = self.client.patch(
+            f"/api/analyst/reviews/{review.id}/decision/",
+            {"final_human_decision": "APPROVED_FOR_FINANCING", "analyst_notes": "Mencoba approve tanpa verifikasi bisnis."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("verification_readiness", response.data)
+
+        business_photo = EvidenceItem.objects.get(borrower_profile=self.profile, evidence_type=EvidenceType.BUSINESS_PHOTO)
+        business_photo.source_type = SourceType.AGENT_VERIFIED
+        business_photo.field_agent_note = "Foto usaha dicocokkan dengan lokasi dan stok saat kunjungan."
+        business_photo.save(update_fields=["source_type", "field_agent_note"])
+
+        response = self.client.patch(
+            f"/api/analyst/reviews/{review.id}/decision/",
+            {"final_human_decision": "APPROVED_FOR_FINANCING", "analyst_notes": "Bukti kunci sudah diverifikasi."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["final_human_decision"], "APPROVED_FOR_FINANCING")
 
     def test_owner_receives_review_decision_with_follow_up_actions(self):
         self.give_consent()
@@ -381,7 +417,7 @@ class MitraScoreEndToEndApiTests(TestCase):
         self.assertGreaterEqual(response.data["score"], 70)
         self.assertLessEqual(response.data["score"], 85)
         self.assertEqual(response.data["readiness_band"], "PROMISING")
-        self.assertIn(response.data["confidence_level"], ["MEDIUM", "HIGH"])
+        self.assertEqual(response.data["confidence_level"], "LOW")
         self.assertTrue(response.data["positive_signals"])
         self.assertTrue(response.data["red_flags"])
         self.assertIn("repayment_capacity", response.data["score_breakdown"])
@@ -417,6 +453,24 @@ class MitraScoreEndToEndApiTests(TestCase):
         self.assertTrue(any(case["id"] == profile_id for case in response.data))
 
         # 3. Add observation note, 4. Upload or verify evidence, 5. Mark agent-assisted/verified
+        business_photo = EvidenceItem.objects.get(borrower_profile_id=profile_id, evidence_type=EvidenceType.BUSINESS_PHOTO)
+        response = self.client.patch(
+            f"/api/evidence/{business_photo.id}/source-type/",
+            {"source_type": "AGENT_VERIFIED", "field_agent_note": "Foto usaha diverifikasi dengan lokasi dan stok saat kunjungan."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["source_type"], "AGENT_VERIFIED")
+
+        receipt = EvidenceItem.objects.filter(borrower_profile_id=profile_id, evidence_type=EvidenceType.RECEIPT).first()
+        response = self.client.patch(
+            f"/api/evidence/{receipt.id}/source-type/",
+            {"source_type": "AGENT_VERIFIED", "field_agent_note": "Nota pemasok dicocokkan dengan stok dan tanggal transaksi."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["source_type"], "AGENT_VERIFIED")
+
         item_id = self.upload_and_process(
             profile_id,
             "agent_verified_supplier_note_e2e.pdf",

@@ -4,6 +4,7 @@ from accounts.serializers import UserSerializer
 from audit.models import AuditLog
 from evidence.serializers import EvidenceItemSerializer
 from scoring.serializers import CreditReadinessReviewSerializer, InstantEvidenceCheckSerializer
+from scoring.services import verification_readiness
 
 from .models import BorrowerProfile, ConsentRecord
 from .workflow import STATUS_LABELS, role_next_actions, workflow_stage
@@ -44,6 +45,7 @@ class BorrowerProfileSerializer(serializers.ModelSerializer):
     status_label = serializers.SerializerMethodField()
     workflow_stage = serializers.SerializerMethodField()
     role_next_actions = serializers.SerializerMethodField()
+    verification_readiness = serializers.SerializerMethodField()
     evidence_count = serializers.IntegerField(source="evidence_items.count", read_only=True)
 
     class Meta:
@@ -65,6 +67,7 @@ class BorrowerProfileSerializer(serializers.ModelSerializer):
             "status_label",
             "workflow_stage",
             "role_next_actions",
+            "verification_readiness",
             "created_by",
             "created_by_detail",
             "assisted_by",
@@ -94,6 +97,9 @@ class BorrowerProfileSerializer(serializers.ModelSerializer):
 
     def get_role_next_actions(self, obj):
         return role_next_actions(obj)
+
+    def get_verification_readiness(self, obj):
+        return verification_readiness(obj)
 
 
 class BorrowerCaseDetailSerializer(BorrowerProfileSerializer):

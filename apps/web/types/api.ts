@@ -62,6 +62,21 @@ export type EvidenceItem = {
   };
 };
 
+export type VerificationReadiness = {
+  approval_ready: boolean;
+  policy_summary: string;
+  verified_business_presence_count: number;
+  required_verified_business_presence_count: number;
+  verified_cashflow_count: number;
+  required_verified_cashflow_count: number;
+  verified_evidence_count: number;
+  total_evidence_count: number;
+  unverified_material_evidence: Array<{ id: number; filename: string; evidence_type: string; source_type: string }>;
+  verified_without_notes: Array<{ id: number; filename: string; evidence_type: string }>;
+  missing_requirements: string[];
+  confidence_cap: string;
+};
+
 export type BorrowerProfile = {
   id: number;
   business_name: string;
@@ -77,6 +92,7 @@ export type BorrowerProfile = {
   status_label: string;
   workflow_stage: WorkflowStage;
   role_next_actions: Partial<Record<Role | "ADMIN", string[]>>;
+  verification_readiness: VerificationReadiness;
   owner_detail?: User;
   assisted_by_detail?: User;
   consent?: { consent_given: boolean };

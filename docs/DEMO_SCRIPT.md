@@ -77,6 +77,7 @@ Login as `analyst@mitrascore.demo`.
    - Score appears.
    - Readiness band appears.
    - Confidence appears.
+   - Verification readiness panel appears.
    - Score breakdown appears.
    - Positive signals and red flags appear.
    - Evidence source meanings/effects are visible.
@@ -137,16 +138,23 @@ Expected:
 
 Analyst:
 
-1. Set decision to `Setujui untuk proses pembiayaan`.
-2. Add note: `Disetujui untuk proses pembiayaan berikutnya setelah review manusia.`
-3. Click `Simpan`.
+1. Before selecting approval, check the verification readiness panel.
+2. If approval is blocked, confirm the panel explains what is missing:
+   - At least one verified business-presence evidence item.
+   - At least two verified cashflow or transaction evidence items.
+   - Verification notes on every `Agent verified` item.
+3. If blocked, choose `Perlu data tambahan` and request verification by field agent.
+4. After the missing evidence is verified, set decision to `Setujui untuk proses pembiayaan`.
+5. Add note: `Disetujui untuk proses pembiayaan berikutnya setelah review manusia.`
+6. Click `Simpan`.
 
 Expected:
 
-1. Owner sees approval for next financing process.
-2. Owner still sees this is a human decision, not AI approval.
-3. Case status is reviewed/finalized.
-4. Audit trail includes the final human decision.
+1. Approval cannot be saved while decision-critical evidence is not verified.
+2. Owner sees approval for next financing process only after verification readiness is satisfied.
+3. Owner still sees this is a human decision, not AI approval.
+4. Case status is reviewed/finalized.
+5. Audit trail includes the final human decision.
 
 ### E. Not Recommended At This Stage
 
@@ -202,8 +210,11 @@ Login as `fieldagent@mitrascore.demo` if testing assisted response.
    - Use `Agent verified - diverifikasi agen` only if the agent checked the evidence against observed business context or original documents.
 6. For `Agent verified`, add a verification note. Confirm upload is disabled if the note is missing.
 7. Confirm the evidence card explains meaning and effect.
-8. Run `Check`.
-9. Click `Kirim ke Analis` when eligible.
+8. Ensure the anti-scam approval requirements are satisfied:
+   - Verify at least one business-presence evidence, usually a business photo.
+   - Verify at least two cashflow/transaction evidences, such as receipts, invoices, supplier notes, sales notes, or QRIS records.
+9. Run `Check`.
+10. Click `Kirim ke Analis` when eligible.
 
 Login as `analyst@mitrascore.demo`.
 
@@ -211,8 +222,9 @@ Login as `analyst@mitrascore.demo`.
 2. Open the case.
 3. Confirm new evidence and agent note are visible.
 4. Run `DeepScore` again.
-5. Save a final decision, usually `APPROVED_FOR_FINANCING`, `RECOMMENDED_FOR_REVIEW`, or `DECLINED`.
-6. Return to owner dashboard and confirm final decision is visible.
+5. Confirm the verification readiness panel is approval-ready before choosing `APPROVED_FOR_FINANCING`.
+6. Save a final decision, usually `APPROVED_FOR_FINANCING`, `RECOMMENDED_FOR_REVIEW`, or `DECLINED`.
+7. Return to owner dashboard and confirm final decision is visible.
 
 ## 5. Field-Agent Assistance From Blank Owner
 
@@ -232,9 +244,10 @@ Login as `fieldagent@mitrascore.demo`.
 4. Fill or correct profile details.
 5. Save changes.
 6. Upload evidence as `Agent assisted`.
-7. Upload or mark at least one item as `Agent verified` with a verification note.
-8. Run `Check`.
-9. Click `Kirim ke Analis` when eligible.
+7. Upload or mark at least one business-presence item as `Agent verified` with a verification note.
+8. Upload or mark at least two cashflow/transaction items as `Agent verified` with verification notes.
+9. Run `Check`.
+10. Click `Kirim ke Analis` when eligible.
 
 Login as `analyst@mitrascore.demo`.
 
@@ -272,12 +285,29 @@ Use the Field Agent Dashboard.
    `Nota asli dilihat saat kunjungan dan cocok dengan stok barang di warung.`
 4. Mark as verified.
    Expected: card says verified; effect says it adds evidence-quality points.
-5. Run Instant Evidence Check.
+5. Verify at least one business-presence evidence and two cashflow/transaction evidences.
+   Expected: verification readiness panel becomes approval-ready.
+6. Run Instant Evidence Check.
    Expected: evidence quality can improve because verified evidence adds weight.
-6. Open Analyst Dashboard.
+7. Open Analyst Dashboard.
    Expected: analyst can see source meaning, source effect, and agent note.
 
-## 8. Undo And Deletion Checks
+## 8. Anti-Scam Approval Gate Checks
+
+Use Analyst Dashboard after DeepScore exists.
+
+1. Try selecting `Setujui untuk proses pembiayaan` before key evidence is verified.
+   Expected: save is blocked and the verification readiness panel explains what is missing.
+2. Login as field agent.
+3. Mark one business-presence evidence as `Agent verified` with a clear note.
+4. Mark two cashflow/transaction evidences as `Agent verified` with clear notes.
+5. Run `Check` and submit back to analyst.
+6. Login as analyst and rerun `DeepScore`.
+7. Confirm verification readiness is approval-ready.
+8. Save `Setujui untuk proses pembiayaan`.
+   Expected: approval succeeds only after verification readiness is satisfied.
+
+## 9. Undo And Deletion Checks
 
 Owner:
 
@@ -297,19 +327,19 @@ Admin:
 3. Confirm admin delete control appears.
 4. Delete only test/demo cases you intentionally created.
 
-## 9. Expected Seeded Case Outcome
+## 10. Expected Seeded Case Outcome
 
 Warung Ibu Sari should generally show:
 
 - Score around `70-85`.
 - Readiness band around `PROMISING`.
-- Confidence `MEDIUM` or `HIGH`, depending on evidence.
+- Confidence may be `LOW` before field verification, then can rise after key evidence is verified.
 - Red flags around informal credit history or collateral if the seeded notes include them.
 - Suggested next action around additional transaction proofs and financing-purpose verification.
 
 Exact score can vary slightly after you add or verify evidence.
 
-## 10. Final Acceptance Checklist
+## 11. Final Acceptance Checklist
 
 A full successful demo should prove:
 
@@ -319,10 +349,11 @@ A full successful demo should prove:
 4. Analyst can run DeepScore and make every human decision type.
 5. `NEEDS_MORE_DATA` creates a clear request-response loop back to owner/agent and then back to analyst.
 6. `APPROVED_FOR_FINANCING` and `DECLINED` are explicit human decisions.
-7. All roles see clear workflow stage, next actions, notes, and audit history.
-8. Responsible AI boundary is visible: DeepScore is advisory; final decision is human.
+7. Approval is blocked until decision-critical evidence is agent verified.
+8. All roles see clear workflow stage, next actions, notes, verification readiness, and audit history.
+9. Responsible AI boundary is visible: DeepScore is advisory; final decision is human.
 
-## 11. Reset Demo State Again
+## 12. Reset Demo State Again
 
 Before repeating the full demo:
 

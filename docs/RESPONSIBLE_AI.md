@@ -8,6 +8,8 @@ The MVP is built around human-in-the-loop credit readiness, not automated lendin
 - AI output is labeled as assistance for review.
 - Analyst screens show data used, data not used, confidence, warnings, and audit logs.
 - Final decision field is human-maintained.
+- Final approval is blocked until decision-critical evidence is agent verified.
+- Agent verification requires notes explaining what was checked.
 
 ## Explicit Non-Use
 
@@ -29,6 +31,19 @@ Important actions are logged:
 - Instant Evidence Check run.
 - DeepScore Review run.
 - Human decision updated.
+- Evidence source or verification status updated.
+
+## Anti-Scam Evidence Gate
+
+DeepScore can screen self-uploaded or assisted evidence, but unverified evidence is not approval-grade evidence.
+
+Before `APPROVED_FOR_FINANCING`, the case must include:
+
+- At least one agent-verified business-presence evidence item.
+- At least two agent-verified cashflow or transaction evidence items.
+- Verification notes on every agent-verified evidence item.
+
+If this gate is not met, analyst review can continue, but final approval is blocked and the recommended decision should be `NEEDS_MORE_DATA`.
 
 ## Limitations
 

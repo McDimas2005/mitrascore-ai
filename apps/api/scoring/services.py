@@ -17,6 +17,17 @@ PROFILE_FIELDS = [
     "simple_cashflow_note",
 ]
 
+BUSINESS_PRESENCE_EVIDENCE_TYPES = {EvidenceType.BUSINESS_PHOTO}
+CASHFLOW_EVIDENCE_TYPES = {
+    EvidenceType.RECEIPT,
+    EvidenceType.INVOICE,
+    EvidenceType.SUPPLIER_NOTE,
+    EvidenceType.SALES_NOTE,
+    EvidenceType.QRIS_SCREENSHOT,
+}
+MIN_VERIFIED_BUSINESS_PRESENCE = 1
+MIN_VERIFIED_CASHFLOW = 2
+
 
 def has_consent(profile):
     return hasattr(profile, "consent") and profile.consent.consent_given
@@ -25,6 +36,56 @@ def has_consent(profile):
 def require_consent(profile):
     if not has_consent(profile):
         raise PermissionError("Consent is required before evidence upload or scoring.")
+
+
+def verification_readiness(profile):
+    items = list(profile.evidence_items.all())
+    verified_items = [item for item in items if item.source_type == SourceType.AGENT_VERIFIED]
+    verified_business_presence = [
+        item for item in verified_items if item.evidence_type in BUSINESS_PRESENCE_EVIDENCE_TYPES
+    ]
+    verified_cashflow = [item for item in verified_items if item.evidence_type in CASHFLOW_EVIDENCE_TYPES]
+    verified_without_notes = [item for item in verified_items if not item.field_agent_note.strip()]
+    material_types = BUSINESS_PRESENCE_EVIDENCE_TYPES | CASHFLOW_EVIDENCE_TYPES
+    unverified_material = [
+        item
+        for item in items
+        if item.evidence_type in material_types and item.source_type != SourceType.AGENT_VERIFIED
+    ]
+    missing_requirements = []
+    if len(verified_business_presence) < MIN_VERIFIED_BUSINESS_PRESENCE:
+        missing_requirements.append(
+            "Verify at least one business-presence evidence item, such as a business photo checked during a field visit."
+        )
+    if len(verified_cashflow) < MIN_VERIFIED_CASHFLOW:
+        missing_requirements.append(
+            "Verify at least two cashflow or transaction evidence items, such as receipts, invoices, supplier notes, sales notes, or QRIS records."
+        )
+    if verified_without_notes:
+        missing_requirements.append("Add verification notes to every agent-verified evidence item.")
+
+    approval_ready = not missing_requirements
+    confidence_cap = ConfidenceLevel.HIGH if approval_ready else ConfidenceLevel.MEDIUM if verified_items else ConfidenceLevel.LOW
+    return {
+        "approval_ready": approval_ready,
+        "policy_summary": "Approval requires verified decision-critical evidence: at least one verified business-presence item and two verified cashflow/transaction items, each with agent notes.",
+        "verified_business_presence_count": len(verified_business_presence),
+        "required_verified_business_presence_count": MIN_VERIFIED_BUSINESS_PRESENCE,
+        "verified_cashflow_count": len(verified_cashflow),
+        "required_verified_cashflow_count": MIN_VERIFIED_CASHFLOW,
+        "verified_evidence_count": len(verified_items),
+        "total_evidence_count": len(items),
+        "unverified_material_evidence": [
+            {"id": item.id, "filename": item.original_filename, "evidence_type": item.evidence_type, "source_type": item.source_type}
+            for item in unverified_material
+        ],
+        "verified_without_notes": [
+            {"id": item.id, "filename": item.original_filename, "evidence_type": item.evidence_type}
+            for item in verified_without_notes
+        ],
+        "missing_requirements": missing_requirements,
+        "confidence_cap": confidence_cap,
+    }
 
 
 def calculate_completeness(profile):
@@ -60,6 +121,8 @@ def calculate_evidence_quality(profile):
         weak.append("Sebagian bukti belum diproses OCR mock.")
     if verified == 0:
         weak.append("Belum ada bukti yang diverifikasi field agent.")
+    readiness = verification_readiness(profile)
+    weak.extend(readiness["missing_requirements"])
     return score, weak
 
 
@@ -124,10 +187,18 @@ def _band(score):
 def _confidence(profile, evidence_quality):
     count = profile.evidence_items.count()
     if count >= 6 and evidence_quality >= 80:
-        return ConfidenceLevel.HIGH
-    if count >= 3 and evidence_quality >= 55:
+        base_confidence = ConfidenceLevel.HIGH
+    elif count >= 3 and evidence_quality >= 55:
+        base_confidence = ConfidenceLevel.MEDIUM
+    else:
+        base_confidence = ConfidenceLevel.LOW
+
+    readiness = verification_readiness(profile)
+    if readiness["confidence_cap"] == ConfidenceLevel.LOW:
+        return ConfidenceLevel.LOW
+    if readiness["confidence_cap"] == ConfidenceLevel.MEDIUM and base_confidence == ConfidenceLevel.HIGH:
         return ConfidenceLevel.MEDIUM
-    return ConfidenceLevel.LOW
+    return base_confidence
 
 
 def run_deepscore(profile, analyst):
@@ -151,6 +222,9 @@ def run_deepscore(profile, analyst):
         red_flags.append("Tidak ada agunan formal; gunakan verifikasi arus kas, bukan sebagai penolak otomatis.")
     if "no formal bank" in note_lower or "belum ada riwayat kredit" in note_lower:
         red_flags.append("Belum ada riwayat kredit bank formal.")
+    readiness = verification_readiness(profile)
+    if not readiness["approval_ready"]:
+        red_flags.append("Anti-scam verification gate belum terpenuhi untuk persetujuan pembiayaan final.")
     risk_compliance = max(45, 85 - (len(red_flags) * 10))
 
     breakdown = {
@@ -171,6 +245,8 @@ def run_deepscore(profile, analyst):
     if has_receipts:
         positives.append("Ada bukti pembelian stok dari pemasok.")
     suggested = "Minta dua bukti transaksi tambahan dan verifikasi tujuan pembiayaan sebelum final review."
+    if not readiness["approval_ready"]:
+        suggested = "Minta field agent memverifikasi bukti kunci sebelum keputusan persetujuan pembiayaan."
     review = CreditReadinessReview.objects.create(
         borrower_profile=profile,
         score=score,
@@ -182,6 +258,7 @@ def run_deepscore(profile, analyst):
             "Skor berbasis aturan deterministik, bukan model black-box.",
             context["warning"],
             "Bobot: kapasitas bayar 30%, konsistensi usaha 25%, kualitas bukti 20%, stabilitas 15%, risiko/kepatuhan 10%.",
+            readiness["policy_summary"],
         ],
         suggested_next_action=suggested,
         score_breakdown=breakdown,

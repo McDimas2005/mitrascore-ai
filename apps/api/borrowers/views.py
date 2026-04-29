@@ -10,7 +10,7 @@ from audit.models import AuditLog
 from audit.services import log_action
 from scoring.models import CreditReadinessReview, HumanDecision
 from scoring.serializers import CreditReadinessReviewSerializer, InstantEvidenceCheckSerializer
-from scoring.services import require_consent, run_deepscore, run_instant_check
+from scoring.services import require_consent, run_deepscore, run_instant_check, verification_readiness
 
 from .models import BorrowerProfile, BorrowerStatus, ConsentRecord
 from .permissions import can_access_profile
@@ -296,6 +296,14 @@ class ReviewDecisionView(APIView):
         decision = request.data.get("final_human_decision")
         if decision not in HumanDecision.values:
             raise ValidationError("Invalid decision.")
+        readiness = verification_readiness(review.borrower_profile)
+        if decision == HumanDecision.APPROVED_FOR_FINANCING and not readiness["approval_ready"]:
+            raise ValidationError(
+                {
+                    "detail": "Approval blocked: decision-critical evidence must be agent verified before financing approval.",
+                    "verification_readiness": readiness,
+                }
+            )
         review.final_human_decision = decision
         review.analyst_notes = request.data.get("analyst_notes", review.analyst_notes)
         review.reviewed_by = request.user

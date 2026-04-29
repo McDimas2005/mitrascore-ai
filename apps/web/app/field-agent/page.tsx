@@ -7,6 +7,7 @@ import type { BorrowerProfile, EvidenceItem } from "@/types/api";
 import { EvidenceSourceBadge, EvidenceSourceDetails } from "@/components/EvidenceSourceBadge";
 import { ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
+import { VerificationReadinessPanel } from "@/components/VerificationReadinessPanel";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 export default function FieldAgentPage() {
@@ -219,6 +220,9 @@ export default function FieldAgentPage() {
               </div>
               <div className="mt-4">
                 <WorkflowPanel profile={selected} role="FIELD_AGENT" />
+              </div>
+              <div className="mt-4">
+                <VerificationReadinessPanel profile={selected} />
               </div>
               <div className="mt-4 rounded-md border border-black/10 bg-paper p-3 text-sm">
                 <p className="font-semibold">Makna status bukti</p>

@@ -9,6 +9,7 @@ import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ScoreCard } from "@/components/ScoreCard";
 import { Empty, ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
+import { VerificationReadinessPanel } from "@/components/VerificationReadinessPanel";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 type AuditLog = { id: number; actor_email?: string; action: string; metadata: Record<string, unknown>; created_at: string };
@@ -143,6 +144,7 @@ export default function AnalystPage() {
 
   const review = selected?.reviews?.[0] ?? selected?.latest_review;
   const check = selected?.instant_checks?.[0] ?? selected?.latest_instant_check;
+  const approvalBlocked = decision === "APPROVED_FOR_FINANCING" && selected?.verification_readiness && !selected.verification_readiness.approval_ready;
 
   return (
     <Shell title="Dashboard Analis Kredit">
@@ -183,6 +185,7 @@ export default function AnalystPage() {
               </div>
             </div>
             <WorkflowPanel profile={selected} role={user?.role === "ADMIN" ? "ADMIN" : "ANALYST"} />
+            <VerificationReadinessPanel profile={selected} />
             {review && <ScoreCard review={review} />}
             <div className="grid gap-4 xl:grid-cols-2">
               <Panel title="Bukti dan ekstraksi">
@@ -221,9 +224,14 @@ export default function AnalystPage() {
                 {review?.final_human_decision_label && (
                   <p className="mt-2 rounded-md bg-paper p-2 text-sm text-black/70">Keputusan tersimpan: {review.final_human_decision_label}</p>
                 )}
+                {approvalBlocked && (
+                  <p className="mt-2 rounded-md border border-saffron/40 bg-saffron/10 p-2 text-sm text-black/75">
+                    Persetujuan diblokir sampai bukti kunci diverifikasi field agent sesuai panel anti-scam.
+                  </p>
+                )}
                 <textarea className="focus-ring mt-2 min-h-24 w-full rounded-md border border-black/15 px-3 py-2 text-sm" placeholder="Catatan analis, permintaan data, atau alasan keputusan" value={notes} onChange={(event) => { setNotes(event.target.value); setDecisionStatus(""); }} />
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <button disabled={!review || busy || savingDecision} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  <button disabled={!review || busy || savingDecision || Boolean(approvalBlocked)} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                     <ClipboardCheck size={16} /> {savingDecision ? "Menyimpan..." : "Simpan"}
                   </button>
                   <button disabled={!review || busy || savingDecision} onClick={resetDecision} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
