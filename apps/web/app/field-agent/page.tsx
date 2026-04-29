@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, Save, Trash2, Upload, Wand2 } from "lucide-react";
+import { CheckCircle2, FileText, RefreshCw, Save, Send, Trash2, Upload, Wand2 } from "lucide-react";
 import { apiFetch, emptyProfile } from "@/lib/api";
 import type { BorrowerProfile, EvidenceItem } from "@/types/api";
 import { ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
+import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 export default function FieldAgentPage() {
   const [profiles, setProfiles] = useState<BorrowerProfile[]>([]);
@@ -153,6 +154,20 @@ export default function FieldAgentPage() {
     }
   }
 
+  async function submitAnalyst() {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const data = await apiFetch<BorrowerProfile>(`/borrower-profiles/${selected.id}/submit-to-analyst/`, { method: "POST", body: JSON.stringify({}) });
+      setSelected(data);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Belum bisa dikirim ke analis. Jalankan check yang cukup dulu.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Shell title="Dashboard Field Agent">
       {loading && <Loading />}
@@ -164,7 +179,7 @@ export default function FieldAgentPage() {
             {profiles.map((profile) => (
               <button key={profile.id} onClick={() => openCase(profile.id)} className={`focus-ring w-full rounded-md border px-3 py-2 text-left text-sm ${selected?.id === profile.id ? "border-mint bg-mint/5" : "border-black/10"}`}>
                 <span className="block font-medium">{profile.business_name}</span>
-                <span className="text-black/60">{profile.status}</span>
+                <span className="text-black/60">{profile.status_label ?? profile.status}</span>
               </button>
             ))}
           </div>
@@ -182,17 +197,37 @@ export default function FieldAgentPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold">{selected.business_name}</h2>
-                  <p className="mt-1 text-sm text-black/60">{selected.business_category || "Kategori belum diisi"} | {selected.status}</p>
+                  <p className="mt-1 text-sm text-black/60">{selected.business_category || "Kategori belum diisi"} | {selected.status_label ?? selected.status}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button disabled={busy} onClick={runInstantCheck} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
                     <RefreshCw size={16} /> Check
+                  </button>
+                  <button disabled={!selected.latest_instant_check?.can_submit_to_analyst || busy} onClick={submitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md bg-saffron px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                    <Send size={16} /> Kirim ke Analis
                   </button>
                   <button disabled={busy} onClick={deleteSelectedProfile} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
                     <Trash2 size={16} /> Hapus
                   </button>
                 </div>
               </div>
+              <div className="mt-4">
+                <WorkflowPanel profile={selected} role="FIELD_AGENT" />
+              </div>
+              {selected.latest_review && (
+                <div className="mt-4 rounded-md border border-black/10 bg-paper p-3 text-sm">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <CheckCircle2 size={17} className="text-mint" />
+                    Hasil review analis: {selected.latest_review.final_human_decision_label}
+                  </div>
+                  {selected.latest_review.analyst_notes && (
+                    <div className="mt-3 flex items-start gap-2 text-black/70">
+                      <FileText size={16} className="mt-0.5 shrink-0 text-mint" />
+                      <p>{selected.latest_review.analyst_notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
               {selected.business_note?.includes("Permintaan bantuan agen:") && (
                 <div className="mt-4 rounded-md border border-mint/30 bg-mint/5 p-3 text-sm">
                   <p className="font-semibold text-mint">Info kunjungan dari UMKM</p>

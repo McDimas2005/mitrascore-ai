@@ -30,7 +30,17 @@ export type Review = {
   main_reasons: string[];
   suggested_next_action: string;
   score_breakdown: Record<string, { weight: number; score: number; weighted: number }>;
+  analyst_notes: string;
   final_human_decision: string;
+  final_human_decision_label: string;
+  follow_up_actions: string[];
+  reviewed_at?: string | null;
+};
+
+export type WorkflowStage = {
+  code: string;
+  label: string;
+  summary: string;
 };
 
 export type EvidenceItem = {
@@ -61,6 +71,9 @@ export type BorrowerProfile = {
   simple_cashflow_note: string;
   business_note: string;
   status: string;
+  status_label: string;
+  workflow_stage: WorkflowStage;
+  role_next_actions: Partial<Record<Role | "ADMIN", string[]>>;
   owner_detail?: User;
   assisted_by_detail?: User;
   consent?: { consent_given: boolean };

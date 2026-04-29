@@ -6,6 +6,7 @@ from evidence.serializers import EvidenceItemSerializer
 from scoring.serializers import CreditReadinessReviewSerializer, InstantEvidenceCheckSerializer
 
 from .models import BorrowerProfile, ConsentRecord
+from .workflow import STATUS_LABELS, role_next_actions, workflow_stage
 
 
 class ConsentRecordSerializer(serializers.ModelSerializer):
@@ -40,6 +41,9 @@ class BorrowerProfileSerializer(serializers.ModelSerializer):
     consent = ConsentRecordSerializer(read_only=True)
     latest_instant_check = serializers.SerializerMethodField()
     latest_review = serializers.SerializerMethodField()
+    status_label = serializers.SerializerMethodField()
+    workflow_stage = serializers.SerializerMethodField()
+    role_next_actions = serializers.SerializerMethodField()
     evidence_count = serializers.IntegerField(source="evidence_items.count", read_only=True)
 
     class Meta:
@@ -58,6 +62,9 @@ class BorrowerProfileSerializer(serializers.ModelSerializer):
             "simple_cashflow_note",
             "business_note",
             "status",
+            "status_label",
+            "workflow_stage",
+            "role_next_actions",
             "created_by",
             "created_by_detail",
             "assisted_by",
@@ -78,6 +85,15 @@ class BorrowerProfileSerializer(serializers.ModelSerializer):
     def get_latest_review(self, obj):
         review = obj.reviews.first()
         return CreditReadinessReviewSerializer(review).data if review else None
+
+    def get_status_label(self, obj):
+        return STATUS_LABELS.get(obj.status, obj.get_status_display())
+
+    def get_workflow_stage(self, obj):
+        return workflow_stage(obj)
+
+    def get_role_next_actions(self, obj):
+        return role_next_actions(obj)
 
 
 class BorrowerCaseDetailSerializer(BorrowerProfileSerializer):

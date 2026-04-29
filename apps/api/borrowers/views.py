@@ -74,7 +74,12 @@ class RequestFieldAgentAssistView(APIView):
         profile = None
         if profile_id:
             profile = get_object_or_404(BorrowerProfile, pk=profile_id, owner=request.user)
-            if profile.reviews.exists():
+            latest_review = profile.reviews.first()
+            if latest_review and latest_review.final_human_decision not in {
+                HumanDecision.NEEDS_MORE_DATA,
+                HumanDecision.NOT_RECOMMENDED_AT_THIS_STAGE,
+                HumanDecision.DECLINED,
+            }:
                 raise ValidationError("Reviewed cases cannot request new field agent assistance.")
         if not profile:
             profile = (
@@ -227,9 +232,15 @@ class SubmitToAnalystView(APIView):
         check = profile.instant_checks.first()
         if not check or not check.can_submit_to_analyst:
             raise ValidationError("Run a sufficient Instant Evidence Check before submitting.")
+        latest_review = profile.reviews.first()
+        action = "SUBMITTED_TO_ANALYST"
+        metadata = {}
+        if latest_review:
+            action = "RESPONSE_SUBMITTED_TO_ANALYST"
+            metadata["responding_to_decision"] = latest_review.final_human_decision
         profile.status = BorrowerStatus.READY_FOR_ANALYST
         profile.save(update_fields=["status", "updated_at"])
-        log_action(request.user, "SUBMITTED_TO_ANALYST", profile, {})
+        log_action(request.user, action, profile, metadata)
         return Response(BorrowerProfileSerializer(profile).data)
 
 
@@ -290,7 +301,19 @@ class ReviewDecisionView(APIView):
         review.reviewed_by = request.user
         review.reviewed_at = timezone.now()
         review.save(update_fields=["final_human_decision", "analyst_notes", "reviewed_by", "reviewed_at"])
-        log_action(request.user, "HUMAN_DECISION_UPDATED", review, {"decision": decision})
+        if decision == HumanDecision.PENDING:
+            review.borrower_profile.status = BorrowerStatus.UNDER_REVIEW
+        elif decision == HumanDecision.NEEDS_MORE_DATA:
+            review.borrower_profile.status = BorrowerStatus.NEEDS_COMPLETION
+        else:
+            review.borrower_profile.status = BorrowerStatus.REVIEWED
+        review.borrower_profile.save(update_fields=["status", "updated_at"])
+        log_action(
+            request.user,
+            "HUMAN_DECISION_UPDATED",
+            review,
+            {"decision": decision, "borrower_profile": review.borrower_profile_id},
+        )
         return Response(CreditReadinessReviewSerializer(review).data)
 
 

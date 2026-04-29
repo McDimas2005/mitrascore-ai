@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, Handshake, PlusCircle, RefreshCw } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, FileText, Handshake, PlusCircle, RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import type { BorrowerProfile } from "@/types/api";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
+import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 export default function OwnerDashboard() {
   const [profiles, setProfiles] = useState<BorrowerProfile[]>([]);
@@ -37,7 +38,12 @@ export default function OwnerDashboard() {
 
   const profile = profiles[0];
   const check = profile?.latest_instant_check;
-  const canRequestAssist = !profile?.assisted_by_detail && (!profile || ["DRAFT", "CONSENTED", "EVIDENCE_UPLOADED", "NEEDS_COMPLETION"].includes(profile.status));
+  const review = profile?.latest_review;
+  const canRequestAssist = !profile?.assisted_by_detail && (
+    !profile ||
+    ["DRAFT", "CONSENTED", "EVIDENCE_UPLOADED", "NEEDS_COMPLETION"].includes(profile.status) ||
+    ["NEEDS_MORE_DATA", "NOT_RECOMMENDED_AT_THIS_STAGE", "DECLINED"].includes(review?.final_human_decision ?? "")
+  );
 
   async function requestFieldAgentAssist() {
     setRequestingAssist(true);
@@ -98,7 +104,7 @@ export default function OwnerDashboard() {
               <div>
                 <p className="text-sm text-black/60">Status profil</p>
                 <h2 className="text-xl font-semibold">{profile.business_name}</h2>
-                <p className="mt-1 text-sm text-black/60">{profile.status}</p>
+                <p className="mt-1 text-sm text-black/60">{profile.status_label ?? profile.status}</p>
                 {profile.assisted_by_detail && (
                   <p className="mt-1 text-sm text-mint">Dibantu oleh {profile.assisted_by_detail.full_name}</p>
                 )}
@@ -106,6 +112,9 @@ export default function OwnerDashboard() {
               <Link href={`/onboarding?id=${profile.id}`} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white">
                 Lanjutkan <ArrowRight size={16} />
               </Link>
+            </div>
+            <div className="mt-5">
+              <WorkflowPanel profile={profile} role="UMKM_OWNER" />
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <Metric label="Kelengkapan" value={`${check?.data_completeness_score ?? 0}%`} />
@@ -122,6 +131,19 @@ export default function OwnerDashboard() {
               <div className="mt-5 flex items-center gap-2 rounded-md bg-paper p-4 text-sm text-black/60">
                 <RefreshCw size={16} /> Instant Evidence Check belum dijalankan.
               </div>
+            )}
+            {review ? (
+              <ReviewDecisionResult review={review} />
+            ) : (
+              ["READY_FOR_ANALYST", "UNDER_REVIEW"].includes(profile.status) && (
+                <div className="mt-5 flex items-start gap-2 rounded-md border border-saffron/30 bg-saffron/5 p-4 text-sm text-black/70">
+                  <Clock3 size={17} className="mt-0.5 shrink-0 text-saffron" />
+                  <div>
+                    <p className="font-medium text-black">Menunggu hasil review analis</p>
+                    <p className="mt-1">Kasus sudah dikirim. Hasil keputusan manusia dan langkah lanjut akan muncul di sini setelah reviewer selesai.</p>
+                  </div>
+                </div>
+              )
             )}
             {canRequestAssist && (
               <AssistRequestForm
@@ -204,6 +226,52 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border border-black/10 p-3">
       <p className="text-xs text-black/60">{label}</p>
       <p className="mt-1 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function ReviewDecisionResult({ review }: { review: BorrowerProfile["latest_review"] }) {
+  if (!review) return null;
+  const reviewedAt = review.reviewed_at
+    ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(review.reviewed_at))
+    : null;
+
+  return (
+    <div className="mt-5 rounded-md border border-mint/30 bg-white p-4 text-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={18} className="text-mint" />
+            <p className="font-semibold">Hasil review manusia</p>
+          </div>
+          <p className="mt-2 text-lg font-semibold">{review.final_human_decision_label}</p>
+          <p className="mt-1 text-black/60">DeepScore {review.score}/100 | {review.readiness_band} | Confidence {review.confidence_level}</p>
+          {reviewedAt && <p className="mt-1 text-xs text-black/50">Diperbarui {reviewedAt}</p>}
+        </div>
+        <span className="inline-flex w-fit items-center rounded-md bg-paper px-2 py-1 text-xs font-medium text-black/70">
+          {review.final_human_decision}
+        </span>
+      </div>
+      {review.analyst_notes && (
+        <div className="mt-4 rounded-md bg-paper p-3">
+          <div className="flex items-center gap-2 font-medium">
+            <FileText size={16} className="text-mint" />
+            Catatan reviewer
+          </div>
+          <p className="mt-2 text-black/70">{review.analyst_notes}</p>
+        </div>
+      )}
+      <div className="mt-4">
+        <p className="font-medium">Langkah lanjut</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-black/70">
+          {review.follow_up_actions.map((action) => <li key={action}>{action}</li>)}
+        </ul>
+      </div>
+      {review.suggested_next_action && (
+        <p className="mt-3 rounded-md border border-black/10 p-3 text-black/65">
+          Rekomendasi DeepScore: {review.suggested_next_action}
+        </p>
+      )}
     </div>
   );
 }

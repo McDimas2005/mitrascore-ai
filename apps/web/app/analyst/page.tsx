@@ -8,8 +8,18 @@ import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ScoreCard } from "@/components/ScoreCard";
 import { Empty, ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
+import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 type AuditLog = { id: number; actor_email?: string; action: string; metadata: Record<string, unknown>; created_at: string };
+
+const decisionOptions = [
+  { value: "PENDING", label: "Pending - masih direview" },
+  { value: "NEEDS_MORE_DATA", label: "Perlu data tambahan" },
+  { value: "RECOMMENDED_FOR_REVIEW", label: "Rekomendasikan review pembiayaan lanjutan" },
+  { value: "APPROVED_FOR_FINANCING", label: "Setujui untuk proses pembiayaan" },
+  { value: "NOT_RECOMMENDED_AT_THIS_STAGE", label: "Belum direkomendasikan saat ini" },
+  { value: "DECLINED", label: "Tolak pada review manusia" }
+];
 
 export default function AnalystPage() {
   const [cases, setCases] = useState<BorrowerProfile[]>([]);
@@ -20,7 +30,9 @@ export default function AnalystPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [savingDecision, setSavingDecision] = useState(false);
   const [error, setError] = useState("");
+  const [decisionStatus, setDecisionStatus] = useState("");
 
   async function loadCases() {
     try {
@@ -36,8 +48,11 @@ export default function AnalystPage() {
 
   async function openCase(id: number) {
     const detail = await apiFetch<BorrowerProfile>(`/analyst/cases/${id}/`);
+    const latestReview = detail.reviews?.[0] ?? detail.latest_review;
     setSelected(detail);
-    setDecision(detail.reviews?.[0]?.final_human_decision ?? "PENDING");
+    setDecision(latestReview?.final_human_decision ?? "PENDING");
+    setNotes(latestReview?.analyst_notes ?? "");
+    setDecisionStatus("");
     setLogs(await apiFetch<AuditLog[]>(`/borrower-profiles/${id}/audit-logs/`));
   }
 
@@ -49,6 +64,8 @@ export default function AnalystPage() {
   async function deepscore() {
     if (!selected) return;
     setBusy(true);
+    setError("");
+    setDecisionStatus("");
     try {
       await apiFetch<Review>(`/analyst/cases/${selected.id}/deepscore/`, { method: "POST", body: JSON.stringify({}) });
       await openCase(selected.id);
@@ -61,38 +78,56 @@ export default function AnalystPage() {
   }
 
   async function saveDecision() {
-    const review = selected?.reviews?.[0];
-    if (!review) return;
-    setBusy(true);
+    const currentCase = selected;
+    if (!currentCase) return;
+    const review = currentCase?.reviews?.[0] ?? currentCase?.latest_review;
+    if (!review) {
+      setError("Jalankan DeepScore dulu sebelum menyimpan keputusan manusia.");
+      return;
+    }
+    setSavingDecision(true);
+    setError("");
+    setDecisionStatus("");
     try {
       await apiFetch(`/analyst/reviews/${review.id}/decision/`, { method: "PATCH", body: JSON.stringify({ final_human_decision: decision, analyst_notes: notes }) });
-      await openCase(selected.id);
+      await openCase(currentCase.id);
+      setDecisionStatus("Keputusan manusia tersimpan.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan keputusan manusia.");
     } finally {
-      setBusy(false);
+      setSavingDecision(false);
     }
   }
 
   async function resetDecision() {
     setDecision("PENDING");
-    const review = selected?.reviews?.[0];
-    if (!review) return;
-    setBusy(true);
+    const currentCase = selected;
+    if (!currentCase) return;
+    const review = currentCase?.reviews?.[0] ?? currentCase?.latest_review;
+    if (!review) {
+      setError("Jalankan DeepScore dulu sebelum membatalkan keputusan manusia.");
+      return;
+    }
+    setSavingDecision(true);
+    setError("");
+    setDecisionStatus("");
     try {
       await apiFetch(`/analyst/reviews/${review.id}/decision/`, { method: "PATCH", body: JSON.stringify({ final_human_decision: "PENDING", analyst_notes: "" }) });
       setNotes("");
-      await openCase(selected.id);
+      await openCase(currentCase.id);
+      setDecisionStatus("Keputusan manusia dikembalikan ke PENDING.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal membatalkan keputusan manusia.");
     } finally {
-      setBusy(false);
+      setSavingDecision(false);
     }
   }
 
   async function deleteSelectedCase() {
     if (!selected || !window.confirm("Hapus kasus ini dari demo lokal?")) return;
     setBusy(true);
+    setError("");
+    setDecisionStatus("");
     try {
       await apiFetch(`/borrower-profiles/${selected.id}/`, { method: "DELETE" });
       setSelected(null);
@@ -120,7 +155,7 @@ export default function AnalystPage() {
             {cases.map((item) => (
               <button key={item.id} onClick={() => openCase(item.id)} className={`focus-ring w-full rounded-md border px-3 py-2 text-left text-sm ${selected?.id === item.id ? "border-mint bg-mint/5" : "border-black/10"}`}>
                 <span className="block font-medium">{item.business_name}</span>
-                <span className="text-black/60">{item.status}</span>
+                <span className="text-black/60">{item.status_label ?? item.status}</span>
               </button>
             ))}
           </div>
@@ -132,6 +167,7 @@ export default function AnalystPage() {
                 <div>
                   <h2 className="text-xl font-semibold">{selected.business_name}</h2>
                   <p className="mt-1 text-sm text-black/60">{selected.financing_purpose}</p>
+                  <p className="mt-1 text-sm font-medium text-mint">{selected.status_label ?? selected.status}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button disabled={busy} onClick={deepscore} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
@@ -145,6 +181,7 @@ export default function AnalystPage() {
                 </div>
               </div>
             </div>
+            <WorkflowPanel profile={selected} role={user?.role === "ADMIN" ? "ADMIN" : "ANALYST"} />
             {review && <ScoreCard review={review} />}
             <div className="grid gap-4 xl:grid-cols-2">
               <Panel title="Bukti dan ekstraksi">
@@ -172,18 +209,22 @@ export default function AnalystPage() {
                 <List items={review?.red_flags ?? []} empty="Tidak ada red flag utama atau DeepScore belum dijalankan." />
               </Panel>
               <Panel title="Keputusan manusia">
-                <select className="focus-ring w-full rounded-md border border-black/15 px-3 py-2 text-sm" value={decision} onChange={(event) => setDecision(event.target.value)}>
-                  {["PENDING", "NEEDS_MORE_DATA", "RECOMMENDED_FOR_REVIEW", "NOT_RECOMMENDED_AT_THIS_STAGE"].map((item) => <option key={item}>{item}</option>)}
+                <select className="focus-ring w-full rounded-md border border-black/15 px-3 py-2 text-sm" value={decision} onChange={(event) => { setDecision(event.target.value); setDecisionStatus(""); }}>
+                  {decisionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
-                <textarea className="focus-ring mt-2 min-h-24 w-full rounded-md border border-black/15 px-3 py-2 text-sm" placeholder="Catatan analis" value={notes} onChange={(event) => setNotes(event.target.value)} />
+                {review?.final_human_decision_label && (
+                  <p className="mt-2 rounded-md bg-paper p-2 text-sm text-black/70">Keputusan tersimpan: {review.final_human_decision_label}</p>
+                )}
+                <textarea className="focus-ring mt-2 min-h-24 w-full rounded-md border border-black/15 px-3 py-2 text-sm" placeholder="Catatan analis, permintaan data, atau alasan keputusan" value={notes} onChange={(event) => { setNotes(event.target.value); setDecisionStatus(""); }} />
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <button disabled={!review || busy} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
-                    <ClipboardCheck size={16} /> Simpan
+                  <button disabled={!review || busy || savingDecision} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                    <ClipboardCheck size={16} /> {savingDecision ? "Menyimpan..." : "Simpan"}
                   </button>
-                  <button disabled={!review || busy} onClick={resetDecision} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
+                  <button disabled={!review || busy || savingDecision} onClick={resetDecision} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
                     <RotateCcw size={16} /> Undo ke Pending
                   </button>
                 </div>
+                {decisionStatus && <p className="mt-2 text-sm font-medium text-mint">{decisionStatus}</p>}
               </Panel>
               <Panel title="Audit trail">
                 <div className="space-y-2 text-sm">

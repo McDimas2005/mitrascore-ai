@@ -100,8 +100,12 @@ def run_instant_check(profile):
         recommended_next_steps=steps,
         can_submit_to_analyst=can_submit,
     )
-    profile.status = BorrowerStatus.READY_FOR_ANALYST if can_submit else BorrowerStatus.NEEDS_COMPLETION
-    profile.save(update_fields=["status", "updated_at"])
+    if not can_submit:
+        profile.status = BorrowerStatus.NEEDS_COMPLETION
+        profile.save(update_fields=["status", "updated_at"])
+    elif profile.status in {BorrowerStatus.DRAFT, BorrowerStatus.CONSENTED}:
+        profile.status = BorrowerStatus.EVIDENCE_UPLOADED
+        profile.save(update_fields=["status", "updated_at"])
     return check
 
 
@@ -181,6 +185,6 @@ def run_deepscore(profile, analyst):
         score_breakdown=breakdown,
         reviewed_by=analyst,
     )
-    profile.status = BorrowerStatus.REVIEWED
+    profile.status = BorrowerStatus.UNDER_REVIEW
     profile.save(update_fields=["status", "updated_at"])
     return review

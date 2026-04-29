@@ -10,6 +10,7 @@ from ai_services.services import process_evidence_item
 from audit.models import AuditLog
 from borrowers.models import BorrowerProfile, ConsentRecord
 from evidence.models import EvidenceItem, EvidenceType, SourceType
+from scoring.models import HumanDecision
 from scoring.services import run_deepscore, run_instant_check
 
 
@@ -103,6 +104,42 @@ class MitraScoreFlowTests(TestCase):
         self.assertIn("risk_compliance", review.score_breakdown)
         self.assertGreaterEqual(review.score, 70)
         self.assertLessEqual(review.score, 80)
+
+    def test_owner_receives_review_decision_with_follow_up_actions(self):
+        self.give_consent()
+        self.add_processed_evidence()
+        run_instant_check(self.profile)
+        review = run_deepscore(self.profile, self.analyst)
+        self.client.force_authenticate(self.owner)
+
+        for decision in HumanDecision.values:
+            review.final_human_decision = decision
+            review.save(update_fields=["final_human_decision"])
+            response = self.client.get("/api/borrower-profiles/")
+            self.assertEqual(response.status_code, 200, response.content)
+            owner_review = response.data[0]["latest_review"]
+            self.assertEqual(owner_review["final_human_decision"], decision)
+            self.assertTrue(owner_review["final_human_decision_label"])
+            self.assertTrue(owner_review["follow_up_actions"])
+
+    def test_owner_can_request_field_agent_help_when_review_needs_more_data(self):
+        self.give_consent()
+        self.add_processed_evidence()
+        run_instant_check(self.profile)
+        review = run_deepscore(self.profile, self.analyst)
+        review.final_human_decision = HumanDecision.NEEDS_MORE_DATA
+        review.save(update_fields=["final_human_decision"])
+        self.profile.assisted_by = None
+        self.profile.save(update_fields=["assisted_by"])
+        self.client.force_authenticate(self.owner)
+
+        response = self.client.post(
+            "/api/borrower-profiles/request-field-agent-assist/",
+            {"profile_id": self.profile.id, "assistance_note": "Reviewer meminta bukti transaksi tambahan."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["assisted_by_detail"]["id"], self.agent.id)
 
     def test_audit_log_creation_on_consent_endpoint(self):
         self.client.force_authenticate(self.owner)
@@ -336,6 +373,11 @@ class MitraScoreEndToEndApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data["final_human_decision"], "NEEDS_MORE_DATA")
+        self.assertEqual(BorrowerProfile.objects.get(pk=profile_id).status, "NEEDS_COMPLETION")
+
+        response = self.client.get(f"/api/borrower-profiles/{profile_id}/audit-logs/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(any(log["action"] == "HUMAN_DECISION_UPDATED" for log in response.data))
 
         # Field Agent Mode: 1. Login, 2. Open assisted case
         agent_user = self.login("fieldagent@mitrascore.demo")
@@ -365,3 +407,22 @@ class MitraScoreEndToEndApiTests(TestCase):
         response = self.client.post(f"/api/borrower-profiles/{profile_id}/instant-check/", {}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertTrue(response.data["can_submit_to_analyst"])
+
+        response = self.client.post(f"/api/borrower-profiles/{profile_id}/submit-to-analyst/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["status"], "READY_FOR_ANALYST")
+        self.assertEqual(response.data["workflow_stage"]["code"], "ANALYST_QUEUE")
+
+        analyst_user = self.login("analyst@mitrascore.demo")
+        self.assertEqual(analyst_user["role"], "ANALYST")
+        response = self.client.post(f"/api/analyst/cases/{profile_id}/deepscore/", {}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        final_review_id = response.data["id"]
+        response = self.client.patch(
+            f"/api/analyst/reviews/{final_review_id}/decision/",
+            {"final_human_decision": "APPROVED_FOR_FINANCING", "analyst_notes": "Data tambahan cukup. Disetujui untuk proses pembiayaan berikutnya."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["final_human_decision"], "APPROVED_FOR_FINANCING")
+        self.assertEqual(BorrowerProfile.objects.get(pk=profile_id).status, "REVIEWED")

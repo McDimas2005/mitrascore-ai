@@ -7,6 +7,7 @@ import type { BorrowerProfile, EvidenceItem, InstantCheck } from "@/types/api";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
+import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 export default function OnboardingPage() {
   const [profile, setProfile] = useState<BorrowerProfile | null>(null);
@@ -198,6 +199,11 @@ export default function OnboardingPage() {
         <section className="space-y-4">
           <Panel title="1. Mode onboarding">
             <div className="rounded-md border border-mint bg-mint/5 p-3 text-sm">Mode aktif: UMKM Self-Onboarding</div>
+            {profile && (
+              <div className="mt-3">
+                <WorkflowPanel profile={profile} role="UMKM_OWNER" />
+              </div>
+            )}
           </Panel>
           <Panel title="2. Persetujuan data">
             <p className="text-sm text-black/65">Persetujuan wajib sebelum unggah bukti dan scoring. AI hanya membantu analisis, bukan keputusan pembiayaan.</p>

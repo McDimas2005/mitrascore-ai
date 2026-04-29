@@ -21,6 +21,8 @@ class HumanDecision(models.TextChoices):
     NEEDS_MORE_DATA = "NEEDS_MORE_DATA", "Needs More Data"
     RECOMMENDED_FOR_REVIEW = "RECOMMENDED_FOR_REVIEW", "Recommended For Review"
     NOT_RECOMMENDED_AT_THIS_STAGE = "NOT_RECOMMENDED_AT_THIS_STAGE", "Not Recommended At This Stage"
+    APPROVED_FOR_FINANCING = "APPROVED_FOR_FINANCING", "Approved For Financing"
+    DECLINED = "DECLINED", "Declined"
 
 
 class InstantEvidenceCheck(models.Model):
