@@ -163,6 +163,36 @@ class MitraScoreFlowTests(TestCase):
         self.assertEqual(result.extracted_fields["vendor"], "Pemasok Sembako Subang")
         self.assertIn("pembelian stok berulang", result.detected_business_indicators["indicators"])
 
+    def test_evidence_source_types_are_explained_and_verified_requires_note(self):
+        self.give_consent()
+        item = EvidenceItem.objects.create(
+            borrower_profile=self.profile,
+            evidence_type=EvidenceType.RECEIPT,
+            source_type=SourceType.SELF_UPLOADED,
+            file=SimpleUploadedFile("source_type_receipt.pdf", b"demo"),
+            original_filename="source_type_receipt.pdf",
+            mime_type="application/pdf",
+            file_size=4,
+            uploaded_by=self.owner,
+        )
+        self.client.force_authenticate(self.agent)
+
+        response = self.client.patch(
+            f"/api/evidence/{item.id}/source-type/",
+            {"source_type": "AGENT_VERIFIED", "field_agent_note": ""},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
+        response = self.client.patch(
+            f"/api/evidence/{item.id}/source-type/",
+            {"source_type": "AGENT_VERIFIED", "field_agent_note": "Nota asli dilihat saat kunjungan."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["source_type_label"], "Agent verified")
+        self.assertIn("evidence-quality", response.data["source_type_effect"])
+
     def test_umkm_owner_can_request_field_agent_assistance(self):
         self.client.force_authenticate(self.owner)
         response = self.client.post("/api/borrower-profiles/request-field-agent-assist/", {}, format="json")

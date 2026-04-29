@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, RotateCcw, Send, Trash2, Upload, XCircle } from "lucide-react";
 import { apiFetch, emptyProfile } from "@/lib/api";
 import type { BorrowerProfile, EvidenceItem, InstantCheck } from "@/types/api";
+import { EvidenceSourceBadge } from "@/components/EvidenceSourceBadge";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
@@ -255,7 +256,11 @@ export default function OnboardingPage() {
                 <div key={item.id} className="flex flex-col gap-2 rounded-md border border-black/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-medium">{item.original_filename}</p>
-                    <p className="text-black/60">{item.evidence_type} | {item.source_type} | {item.ai_status}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-black/60">
+                      <span>{item.evidence_type}</span>
+                      <EvidenceSourceBadge item={item} />
+                      <span>{item.ai_status}</span>
+                    </div>
                   </div>
                   <button disabled={busy} onClick={() => deleteEvidence(item.id)} className="focus-ring inline-flex items-center justify-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
                     <Trash2 size={16} /> Hapus

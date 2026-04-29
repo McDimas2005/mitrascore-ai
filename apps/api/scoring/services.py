@@ -58,6 +58,8 @@ def calculate_evidence_quality(profile):
         weak.append("Jenis bukti masih kurang beragam.")
     if len(processed) < len(items):
         weak.append("Sebagian bukti belum diproses OCR mock.")
+    if verified == 0:
+        weak.append("Belum ada bukti yang diverifikasi field agent.")
     return score, weak
 
 

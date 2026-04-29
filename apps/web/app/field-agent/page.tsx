@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, FileText, RefreshCw, Save, Send, Trash2, Upload, Wand2 } from "lucide-react";
 import { apiFetch, emptyProfile } from "@/lib/api";
 import type { BorrowerProfile, EvidenceItem } from "@/types/api";
+import { EvidenceSourceBadge, EvidenceSourceDetails } from "@/components/EvidenceSourceBadge";
 import { ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
@@ -114,11 +115,16 @@ export default function FieldAgentPage() {
   }
 
   async function updateEvidenceSource(item: EvidenceItem, nextSourceType: string) {
+    let fieldAgentNote = item.field_agent_note;
+    if (nextSourceType === "AGENT_VERIFIED" && !fieldAgentNote.trim()) {
+      fieldAgentNote = window.prompt("Catatan verifikasi wajib: jelaskan apa yang dilihat/dicocokkan agen.", "")?.trim() ?? "";
+      if (!fieldAgentNote) return;
+    }
     setBusy(true);
     try {
       await apiFetch(`/evidence/${item.id}/source-type/`, {
         method: "PATCH",
-        body: JSON.stringify({ source_type: nextSourceType, field_agent_note: item.field_agent_note })
+        body: JSON.stringify({ source_type: nextSourceType, field_agent_note: fieldAgentNote })
       });
       if (selected) await openCase(selected.id);
     } catch (err) {
@@ -214,6 +220,23 @@ export default function FieldAgentPage() {
               <div className="mt-4">
                 <WorkflowPanel profile={selected} role="FIELD_AGENT" />
               </div>
+              <div className="mt-4 rounded-md border border-black/10 bg-paper p-3 text-sm">
+                <p className="font-semibold">Makna status bukti</p>
+                <div className="mt-2 grid gap-2 md:grid-cols-3">
+                  <SourceDefinition
+                    title="Self uploaded"
+                    text="Owner mengunggah bukti sendiri. Bukti dipakai untuk kelengkapan dan OCR, tanpa klaim verifikasi lapangan."
+                  />
+                  <SourceDefinition
+                    title="Agent assisted"
+                    text="Agen membantu mengambil atau mengunggah bukti. Ini mencatat pendampingan, tetapi belum berarti agen memverifikasi keaslian atau konteks bukti."
+                  />
+                  <SourceDefinition
+                    title="Agent verified"
+                    text="Agen sudah mencocokkan bukti dengan observasi usaha atau dokumen asli. Status ini menambah +4 poin kualitas bukti per item sebelum batas skor dan wajib punya catatan verifikasi."
+                  />
+                </div>
+              </div>
               {selected.latest_review && (
                 <div className="mt-4 rounded-md border border-black/10 bg-paper p-3 text-sm">
                   <div className="flex items-center gap-2 font-semibold">
@@ -248,25 +271,35 @@ export default function FieldAgentPage() {
                   {["BUSINESS_PHOTO", "RECEIPT", "INVOICE", "SUPPLIER_NOTE", "SALES_NOTE", "QRIS_SCREENSHOT", "OTHER"].map((type) => <option key={type}>{type}</option>)}
                 </select>
                 <select className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm" value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
-                  {["AGENT_ASSISTED", "AGENT_VERIFIED", "SELF_UPLOADED"].map((type) => <option key={type}>{type}</option>)}
+                  <option value="AGENT_ASSISTED">Agent assisted - dibantu agen</option>
+                  <option value="AGENT_VERIFIED">Agent verified - diverifikasi agen</option>
+                  <option value="SELF_UPLOADED">Self uploaded - unggahan owner</option>
                 </select>
                 <input className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm sm:col-span-2" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
                 <textarea className="focus-ring min-h-24 rounded-md border border-black/15 px-3 py-2 text-sm sm:col-span-2" placeholder="Catatan observasi agen" value={note} onChange={(event) => setNote(event.target.value)} />
               </div>
-              <button disabled={!file || busy} onClick={upload} className="focus-ring mt-3 inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <button disabled={!file || busy || (sourceType === "AGENT_VERIFIED" && !note.trim())} onClick={upload} className="focus-ring mt-3 inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                 <Upload size={16} /> Unggah dan proses
               </button>
+              {sourceType === "AGENT_VERIFIED" && !note.trim() && (
+                <p className="mt-2 text-sm text-saffron">Catatan verifikasi wajib untuk bukti agent verified.</p>
+              )}
               <div className="mt-5 space-y-2">
                 {(selected.evidence_items ?? []).map((item) => (
                   <div key={item.id} className="rounded-md border border-black/10 p-3 text-sm">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="font-medium">{item.original_filename}</p>
-                        <p className="text-black/60">{item.evidence_type} | {item.source_type} | {item.ai_status}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-black/60">
+                          <span>{item.evidence_type}</span>
+                          <EvidenceSourceBadge item={item} />
+                          <span>{item.ai_status}</span>
+                        </div>
+                        <EvidenceSourceDetails item={item} />
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <button disabled={busy} onClick={() => updateEvidenceSource(item, "AGENT_ASSISTED")} className="focus-ring rounded-md border border-black/15 px-3 py-2 disabled:opacity-50">Assisted</button>
-                        <button disabled={busy} onClick={() => updateEvidenceSource(item, "AGENT_VERIFIED")} className="focus-ring rounded-md border border-mint px-3 py-2 text-mint disabled:opacity-50">Verified</button>
+                        <button disabled={busy || item.source_type === "AGENT_ASSISTED"} onClick={() => updateEvidenceSource(item, "AGENT_ASSISTED")} title="Mark as agent assisted: agent helped collect/upload, but has not verified source context." className="focus-ring rounded-md border border-black/15 px-3 py-2 disabled:opacity-50">Mark assisted</button>
+                        <button disabled={busy || item.source_type === "AGENT_VERIFIED"} onClick={() => updateEvidenceSource(item, "AGENT_VERIFIED")} title="Mark as agent verified: requires verification note and increases evidence quality." className="focus-ring rounded-md border border-mint px-3 py-2 text-mint disabled:opacity-50">Mark verified</button>
                         <button disabled={busy} onClick={() => deleteEvidence(item.id)} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-red-700 disabled:opacity-50">
                           <Trash2 size={15} /> Hapus
                         </button>
@@ -282,5 +315,14 @@ export default function FieldAgentPage() {
         </section>
       </div>
     </Shell>
+  );
+}
+
+function SourceDefinition({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-md border border-black/10 bg-white p-3">
+      <p className="font-medium">{title}</p>
+      <p className="mt-1 text-black/65">{text}</p>
+    </div>
   );
 }

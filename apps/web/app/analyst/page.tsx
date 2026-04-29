@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ClipboardCheck, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { apiFetch, getUser } from "@/lib/api";
 import type { BorrowerProfile, Review, User } from "@/types/api";
+import { EvidenceSourceBadge, EvidenceSourceDetails } from "@/components/EvidenceSourceBadge";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ScoreCard } from "@/components/ScoreCard";
 import { Empty, ErrorMessage, Loading } from "@/components/State";
@@ -188,7 +189,12 @@ export default function AnalystPage() {
                 {(selected.evidence_items ?? []).map((item) => (
                   <div key={item.id} className="mb-3 rounded-md border border-black/10 p-3 text-sm">
                     <p className="font-medium">{item.original_filename}</p>
-                    <p className="text-black/60">{item.evidence_type} | {item.source_type} | {item.ai_status}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-black/60">
+                      <span>{item.evidence_type}</span>
+                      <EvidenceSourceBadge item={item} />
+                      <span>{item.ai_status}</span>
+                    </div>
+                    <EvidenceSourceDetails item={item} />
                     <p className="mt-2 text-black/70">{item.extraction_result?.extracted_text ?? "Belum diproses."}</p>
                   </div>
                 ))}

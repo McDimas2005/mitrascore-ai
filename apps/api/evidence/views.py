@@ -59,7 +59,12 @@ class EvidenceSourceTypeView(APIView):
         serializer = EvidenceSourceTypeSerializer(item, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        log_action(request.user, "EVIDENCE_SOURCE_UPDATED", item, serializer.validated_data)
+        log_action(
+            request.user,
+            "EVIDENCE_SOURCE_UPDATED",
+            item,
+            {"borrower_profile": item.borrower_profile_id, **serializer.validated_data},
+        )
         return Response(EvidenceItemSerializer(item, context={"request": request}).data)
 
 

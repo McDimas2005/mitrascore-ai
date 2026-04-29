@@ -47,6 +47,9 @@ export type EvidenceItem = {
   id: number;
   evidence_type: string;
   source_type: string;
+  source_type_label: string;
+  source_type_summary: string;
+  source_type_effect: string;
   original_filename: string;
   field_agent_note: string;
   ai_status: string;
