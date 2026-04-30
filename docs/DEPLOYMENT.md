@@ -56,6 +56,7 @@ CSRF_TRUSTED_ORIGINS=https://<frontend-domain>.vercel.app,https://<app-name>.<re
 CORS_ALLOWED_ORIGINS=https://<frontend-domain>.vercel.app
 DATABASE_URL=<Neon pooled PostgreSQL URL>
 DATABASE_SSL_REQUIRE=true
+WEBSITES_PORT=8000
 
 USE_MOCK_AI=true
 USE_AZURE_BLOB_STORAGE=true

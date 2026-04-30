@@ -61,6 +61,19 @@ jobs:
           rm -rf .python_packages
           python -m pip install --target=".python_packages/lib/site-packages" -r requirements.txt
 
+      - name: Verify vendored runtime imports
+        run: |
+          PYTHONPATH="$PWD/.python_packages/lib/site-packages" python - <<'PY'
+          import django
+          import gunicorn
+          import psycopg2
+          import rest_framework
+
+          print("Vendored imports OK")
+          print("django", django.get_version())
+          print("gunicorn", gunicorn.__version__)
+          PY
+
       - name: Deploy API package
         uses: azure/webapps-deploy@v3
         with:

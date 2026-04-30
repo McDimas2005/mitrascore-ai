@@ -157,6 +157,7 @@ Backend production notes:
 - Keep Azure keys in platform secrets, not in git.
 - Keep App Service Always On enabled on the B1 plan.
 - Azure startup command: `bash startup.sh`.
+- Set Azure App Service `WEBSITES_PORT=8000`.
 - First deployment commands: `python manage.py migrate`, `python manage.py collectstatic --noinput`, and `python manage.py seed_demo_data`.
 
 Draft CI workflow is in `.github/workflows/ci.yml`.
