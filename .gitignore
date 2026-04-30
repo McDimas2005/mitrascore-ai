@@ -5,6 +5,10 @@ db.sqlite3
 media/evidence/
 apps/api/db.sqlite3
 apps/api/media/
+apps/api/staticfiles/
 node_modules/
 .next/
 .env
+.env.*
+!.env.example
+!.env.*.example

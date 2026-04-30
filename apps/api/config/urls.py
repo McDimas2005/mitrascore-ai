@@ -3,10 +3,11 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
-from accounts.views import LoginView, MeView, RefreshView
+from accounts.views import HealthView, LoginView, MeView, RefreshView, RuntimeStatusView
 from borrowers.views import (
     AnalystCaseDetailView,
     AnalystCasesView,
+    AnalystFieldVerificationRequestView,
     BorrowerAuditLogView,
     BorrowerProfileDetailView,
     BorrowerProfileListCreateView,
@@ -26,6 +27,8 @@ urlpatterns = [
     path("api/auth/login/", LoginView.as_view()),
     path("api/auth/refresh/", RefreshView.as_view()),
     path("api/auth/me/", MeView.as_view()),
+    path("api/health/", HealthView.as_view()),
+    path("api/runtime-status/", RuntimeStatusView.as_view()),
     path("api/borrower-profiles/", BorrowerProfileListCreateView.as_view()),
     path("api/borrower-profiles/request-field-agent-assist/", RequestFieldAgentAssistView.as_view()),
     path("api/borrower-profiles/<int:pk>/", BorrowerProfileDetailView.as_view()),
@@ -41,6 +44,7 @@ urlpatterns = [
     path("api/analyst/cases/", AnalystCasesView.as_view()),
     path("api/analyst/cases/<int:pk>/", AnalystCaseDetailView.as_view()),
     path("api/analyst/cases/<int:pk>/deepscore/", DeepScoreView.as_view()),
+    path("api/analyst/cases/<int:pk>/request-field-verification/", AnalystFieldVerificationRequestView.as_view()),
     path("api/analyst/reviews/<int:pk>/decision/", ReviewDecisionView.as_view()),
     path("api/borrower-profiles/<int:pk>/audit-logs/", BorrowerAuditLogView.as_view()),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

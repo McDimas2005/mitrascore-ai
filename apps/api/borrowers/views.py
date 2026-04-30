@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User, UserRole
+from ai_services.services import ai_runtime_status
 from audit.models import AuditLog
 from audit.services import log_action
 from scoring.models import CreditReadinessReview, HumanDecision
@@ -35,6 +36,22 @@ FINAL_LOCKED_MESSAGE = (
     "Perubahan, unggah bukti, check ulang, dan kirim ulang tidak tersedia untuk siklus yang sama."
 )
 
+ANALYST_REVIEW_STATUSES = {BorrowerStatus.READY_FOR_ANALYST, BorrowerStatus.UNDER_REVIEW, BorrowerStatus.REVIEWED}
+
+
+def require_analyst_reviewable(profile, user=None):
+    if user and user.role == UserRole.ADMIN:
+        return
+    if profile.status not in ANALYST_REVIEW_STATUSES and not profile.reviews.exists():
+        raise PermissionDenied("Analysts can only review cases that have been submitted to the analyst queue.")
+
+
+def first_active_field_agent():
+    agent = User.objects.filter(role=UserRole.FIELD_AGENT, is_active=True).order_by("id").first()
+    if not agent:
+        raise ValidationError("No active field agent is available.")
+    return agent
+
 
 class BorrowerProfileListCreateView(APIView):
     def get(self, request):
@@ -43,6 +60,8 @@ class BorrowerProfileListCreateView(APIView):
             qs = qs.filter(owner=request.user)
         elif request.user.role == UserRole.FIELD_AGENT:
             qs = qs.filter(assisted_by=request.user) | qs.filter(created_by=request.user)
+        elif request.user.role == UserRole.ANALYST:
+            qs = qs.filter(status__in=ANALYST_REVIEW_STATUSES)
         return Response(BorrowerProfileSerializer(qs.distinct(), many=True).data)
 
     def post(self, request):
@@ -68,9 +87,7 @@ class RequestFieldAgentAssistView(APIView):
     def post(self, request):
         if request.user.role != UserRole.UMKM_OWNER:
             raise PermissionDenied("Only UMKM owners can request field agent assistance.")
-        agent = User.objects.filter(role=UserRole.FIELD_AGENT, is_active=True).order_by("id").first()
-        if not agent:
-            raise ValidationError("No active field agent is available.")
+        agent = first_active_field_agent()
         visit_info = {
             "store_address": request.data.get("store_address", "").strip(),
             "contact_phone": request.data.get("contact_phone", "").strip(),
@@ -141,6 +158,8 @@ class BorrowerProfileDetailView(APIView):
         profile = get_object_or_404(BorrowerProfile, pk=pk)
         if not can_access_profile(request.user, profile):
             raise PermissionDenied("You cannot access this borrower profile.")
+        if request.user.role == UserRole.ANALYST:
+            require_analyst_reviewable(profile, request.user)
         return profile
 
     def get(self, request, pk):
@@ -189,7 +208,10 @@ class ConsentView(APIView):
                 "consent_given": serializer.validated_data["consent_given"],
                 "consent_text_snapshot": CONSENT_TEXT,
                 "data_processing_purpose": "Menilai kesiapan kredit UMKM berdasarkan profil dan bukti usaha yang diberikan.",
-                "ai_usage_disclosure": "AI mock digunakan untuk OCR, ringkasan, dan skor berbasis aturan. AI tidak membuat keputusan pembiayaan.",
+                "ai_usage_disclosure": (
+                    f"Mode AI aktif: {ai_runtime_status()['ai_mode']}. AI digunakan untuk OCR/ekstraksi bukti "
+                    "dan skor berbasis aturan. AI tidak membuat keputusan pembiayaan."
+                ),
                 "user_rights_disclosure": "Pengguna dapat meminta koreksi data dan tinjauan manusia atas hasil analisis.",
                 "given_by": request.user,
             },
@@ -284,6 +306,7 @@ class AnalystCaseDetailView(APIView):
         if request.user.role not in {UserRole.ANALYST, UserRole.ADMIN}:
             raise PermissionDenied("Only analysts can view submitted cases.")
         profile = get_object_or_404(BorrowerProfile, pk=pk)
+        require_analyst_reviewable(profile, request.user)
         return Response(BorrowerCaseDetailSerializer(profile, context={"request": request}).data)
 
 
@@ -292,12 +315,60 @@ class DeepScoreView(APIView):
         if request.user.role not in {UserRole.ANALYST, UserRole.ADMIN}:
             raise PermissionDenied("Only analysts can run DeepScore Review.")
         profile = get_object_or_404(BorrowerProfile, pk=pk)
+        require_analyst_reviewable(profile, request.user)
         try:
             review = run_deepscore(profile, request.user)
         except PermissionError as exc:
             raise PermissionDenied(str(exc))
         log_action(request.user, "DEEPSCORE_REVIEW_RUN", profile, {"score": review.score, "band": review.readiness_band})
         return Response(CreditReadinessReviewSerializer(review).data, status=status.HTTP_201_CREATED)
+
+
+class AnalystFieldVerificationRequestView(APIView):
+    def post(self, request, pk):
+        if request.user.role not in {UserRole.ANALYST, UserRole.ADMIN}:
+            raise PermissionDenied("Only analysts can request field verification.")
+        profile = get_object_or_404(BorrowerProfile, pk=pk)
+        require_analyst_reviewable(profile, request.user)
+        if is_final_locked(profile) and request.user.role != UserRole.ADMIN:
+            raise PermissionDenied(FINAL_LOCKED_MESSAGE)
+        review = profile.reviews.first()
+        if not review:
+            raise ValidationError("Run DeepScore before requesting field-agent verification.")
+        agent = profile.assisted_by or first_active_field_agent()
+        readiness = verification_readiness(profile)
+        note = request.data.get("analyst_notes", "").strip()
+        missing = "; ".join(readiness["missing_requirements"])
+        default_note = (
+            "Minta field agent memverifikasi bukti kunci sebelum keputusan pembiayaan final. "
+            f"Kekurangan: {missing or 'cek bukti keberadaan usaha dan bukti arus kas utama.'}"
+        )
+        review.final_human_decision = HumanDecision.NEEDS_MORE_DATA
+        review.analyst_notes = note or default_note
+        review.reviewed_by = request.user
+        review.reviewed_at = timezone.now()
+        review.save(update_fields=["final_human_decision", "analyst_notes", "reviewed_by", "reviewed_at"])
+        profile.assisted_by = agent
+        profile.status = BorrowerStatus.NEEDS_COMPLETION
+        profile.save(update_fields=["assisted_by", "status", "updated_at"])
+        log_action(
+            request.user,
+            "FIELD_AGENT_VERIFICATION_REQUESTED",
+            profile,
+            {
+                "assisted_by": agent.id,
+                "assisted_by_email": agent.email,
+                "review": review.id,
+                "verification_readiness": readiness,
+            },
+        )
+        log_action(
+            request.user,
+            "HUMAN_DECISION_UPDATED",
+            review,
+            {"decision": HumanDecision.NEEDS_MORE_DATA, "borrower_profile": profile.id, "reason": "field_agent_verification_requested"},
+        )
+        return Response(BorrowerCaseDetailSerializer(profile, context={"request": request}).data)
 
 
 class ReviewDecisionView(APIView):
@@ -345,6 +416,8 @@ class BorrowerAuditLogView(APIView):
         profile = get_object_or_404(BorrowerProfile, pk=pk)
         if not can_access_profile(request.user, profile):
             raise PermissionDenied("You cannot access this borrower profile.")
+        if request.user.role == UserRole.ANALYST:
+            require_analyst_reviewable(profile, request.user)
         logs = AuditLog.objects.filter(entity_id=str(pk), entity_type="BorrowerProfile") | AuditLog.objects.filter(
             metadata__borrower_profile=pk
         )

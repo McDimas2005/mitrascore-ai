@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
+from django.test import override_settings
 
 from accounts.models import User, UserRole
 from ai_services.services import process_evidence_item
@@ -71,6 +72,8 @@ class Command(BaseCommand):
                 "given_by": owner,
             },
         )
+        profile.instant_checks.all().delete()
+        profile.reviews.all().delete()
         fixtures = [
             ("business_photo_warung_sari.jpg", EvidenceType.BUSINESS_PHOTO, SourceType.SELF_UPLOADED, ""),
             ("supplier_receipt_beras_minyak_1.pdf", EvidenceType.RECEIPT, SourceType.AGENT_VERIFIED, "Nota asli dilihat saat kunjungan."),
@@ -79,27 +82,28 @@ class Command(BaseCommand):
             ("daily_sales_note.txt", EvidenceType.SALES_NOTE, SourceType.SELF_UPLOADED, ""),
             ("qris_screenshot_warung_sari.png", EvidenceType.QRIS_SCREENSHOT, SourceType.SELF_UPLOADED, ""),
         ]
-        for filename, evidence_type, source_type, note in fixtures:
-            item, created = EvidenceItem.objects.get_or_create(
-                borrower_profile=profile,
-                original_filename=filename,
-                defaults={
-                    "evidence_type": evidence_type,
-                    "source_type": source_type,
-                    "file": ContentFile(b"local demo evidence", name=f"evidence/{filename}"),
-                    "mime_type": "application/octet-stream",
-                    "file_size": 19,
-                    "uploaded_by": agent if source_type != SourceType.SELF_UPLOADED else owner,
-                    "field_agent_note": note,
-                },
-            )
-            if not created:
-                item.evidence_type = evidence_type
-                item.source_type = source_type
-                item.field_agent_note = note
-                item.save()
-            process_evidence_item(item)
-        run_instant_check(profile)
-        review = run_deepscore(profile, analyst)
+        with override_settings(USE_MOCK_AI=True):
+            for filename, evidence_type, source_type, note in fixtures:
+                item, created = EvidenceItem.objects.get_or_create(
+                    borrower_profile=profile,
+                    original_filename=filename,
+                    defaults={
+                        "evidence_type": evidence_type,
+                        "source_type": source_type,
+                        "file": ContentFile(b"local demo evidence", name=f"evidence/{filename}"),
+                        "mime_type": "application/octet-stream",
+                        "file_size": 19,
+                        "uploaded_by": agent if source_type != SourceType.SELF_UPLOADED else owner,
+                        "field_agent_note": note,
+                    },
+                )
+                if not created:
+                    item.evidence_type = evidence_type
+                    item.source_type = source_type
+                    item.field_agent_note = note
+                    item.save()
+                process_evidence_item(item)
+            run_instant_check(profile)
+            review = run_deepscore(profile, analyst)
         log_action(analyst, "DEMO_DATA_SEEDED", profile, {"score": review.score})
         self.stdout.write(self.style.SUCCESS(f"Seeded demo case with score {review.score}/{100} ({review.readiness_band})."))

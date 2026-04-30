@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, RotateCcw, Send, Trash2, Upload, XCircle } from "lucide-react";
 import { apiFetch, emptyProfile } from "@/lib/api";
 import type { BorrowerProfile, EvidenceItem, InstantCheck } from "@/types/api";
+import { ActionAvailability } from "@/components/ActionAvailability";
 import { EvidenceSourceBadge } from "@/components/EvidenceSourceBadge";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ErrorMessage, Loading } from "@/components/State";
@@ -36,12 +37,36 @@ export default function OnboardingPage() {
     }
   }
 
+  async function refreshProfileDetail(id: number) {
+    const detail = await apiFetch<BorrowerProfile>(`/borrower-profiles/${id}/`);
+    setProfile(detail);
+    setForm(detail);
+    return detail;
+  }
+
   useEffect(() => {
     load();
   }, []);
 
   const latestDecision = profile?.latest_review?.final_human_decision;
   const isFinalLocked = ["DECLINED", "APPROVED_FOR_FINANCING"].includes(latestDecision ?? "");
+  const consentGiven = Boolean(profile?.consent?.consent_given);
+  const canSubmitToAnalyst = Boolean(profile?.latest_instant_check?.can_submit_to_analyst);
+  const canUndoSubmit = Boolean(profile && ["READY_FOR_ANALYST", "UNDER_REVIEW"].includes(profile.status));
+  const finalLockedReason = isFinalLocked
+    ? "Pengajuan ini sudah final, sehingga perubahan normal, unggah bukti, check ulang, dan kirim ulang tidak tersedia."
+    : "";
+  const profileSaveReason = finalLockedReason;
+  const uploadReason = finalLockedReason || (!profile ? "Simpan atau buat profil usaha terlebih dahulu sebelum unggah bukti." : "") ||
+    (!consentGiven ? "Berikan persetujuan data terlebih dahulu sebelum unggah bukti." : "") ||
+    (!file ? "Pilih file bukti dengan format jpg, jpeg, png, pdf, atau txt." : "");
+  const checkReason = finalLockedReason || (!profile ? "Buat profil usaha terlebih dahulu." : "") ||
+    (!consentGiven ? "Berikan persetujuan data terlebih dahulu sebelum menjalankan check." : "");
+  const submitReason = finalLockedReason || (!profile ? "Buat profil usaha terlebih dahulu." : "") ||
+    (!profile?.latest_instant_check ? "Jalankan Instant Evidence Check terlebih dahulu." : "") ||
+    (!canSubmitToAnalyst ? "Hasil check belum cukup untuk dikirim. Ikuti rekomendasi kelengkapan dan kualitas bukti di atas." : "");
+  const undoReason = !profile ? "Belum ada profil usaha untuk dibatalkan." :
+    (!canUndoSubmit ? "Batalkan kirim hanya tersedia saat kasus sudah berada di antrean analis atau sedang direview." : "");
 
   function profilePayload() {
     return {
@@ -71,8 +96,7 @@ export default function OnboardingPage() {
       const data = profile
         ? await apiFetch<BorrowerProfile>(`/borrower-profiles/${profile.id}/`, { method: "PATCH", body })
         : await apiFetch<BorrowerProfile>("/borrower-profiles/", { method: "POST", body });
-      setProfile(data);
-      setForm(data);
+      await refreshProfileDetail(data.id);
       window.history.replaceState(null, "", `/onboarding?id=${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan profil.");
@@ -159,8 +183,8 @@ export default function OnboardingPage() {
     if (!profile) return;
     setBusy(true);
     try {
-      const check = await apiFetch<InstantCheck>(`/borrower-profiles/${profile.id}/instant-check/`, { method: "POST", body: JSON.stringify({}) });
-      setProfile({ ...profile, latest_instant_check: check });
+      await apiFetch<InstantCheck>(`/borrower-profiles/${profile.id}/instant-check/`, { method: "POST", body: JSON.stringify({}) });
+      await refreshProfileDetail(profile.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menjalankan Instant Evidence Check.");
     } finally {
@@ -172,8 +196,8 @@ export default function OnboardingPage() {
     if (!profile) return;
     setBusy(true);
     try {
-      const data = await apiFetch<BorrowerProfile>(`/borrower-profiles/${profile.id}/submit-to-analyst/`, { method: "POST", body: JSON.stringify({}) });
-      setProfile(data);
+      await apiFetch<BorrowerProfile>(`/borrower-profiles/${profile.id}/submit-to-analyst/`, { method: "POST", body: JSON.stringify({}) });
+      await refreshProfileDetail(profile.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Belum bisa dikirim ke analis.");
     } finally {
@@ -185,8 +209,8 @@ export default function OnboardingPage() {
     if (!profile) return;
     setBusy(true);
     try {
-      const data = await apiFetch<BorrowerProfile>(`/borrower-profiles/${profile.id}/undo-submit-to-analyst/`, { method: "POST", body: JSON.stringify({}) });
-      setProfile(data);
+      await apiFetch<BorrowerProfile>(`/borrower-profiles/${profile.id}/undo-submit-to-analyst/`, { method: "POST", body: JSON.stringify({}) });
+      await refreshProfileDetail(profile.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal membatalkan pengiriman ke analis.");
     } finally {
@@ -244,22 +268,24 @@ export default function OnboardingPage() {
             <TextArea disabled={isFinalLocked} label="Catatan arus kas sederhana" value={form.simple_cashflow_note} onChange={(v) => setForm({ ...form, simple_cashflow_note: v })} />
             <TextArea disabled={isFinalLocked} label="Catatan usaha" value={form.business_note} onChange={(v) => setForm({ ...form, business_note: v })} />
             <div className="mt-3 flex flex-wrap gap-2">
-              <button disabled={busy || isFinalLocked} onClick={saveProfile} className="focus-ring rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Simpan profil</button>
-              <button disabled={!profile || busy || isFinalLocked} onClick={deleteProfile} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
+              <button disabled={busy || isFinalLocked} title={profileSaveReason || undefined} onClick={saveProfile} className="focus-ring rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Simpan profil</button>
+              <button disabled={!profile || busy || isFinalLocked} title={finalLockedReason || (!profile ? "Belum ada profil usaha untuk dihapus." : undefined)} onClick={deleteProfile} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
                 <Trash2 size={16} /> Hapus Profil
               </button>
             </div>
+            <ActionAvailability reasons={[profileSaveReason]} />
           </Panel>
           <Panel title="4. Unggah bukti usaha">
             <div className="grid gap-3 sm:grid-cols-[180px_1fr_auto]">
               <select disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" value={evidenceType} onChange={(event) => setEvidenceType(event.target.value)}>
                 {["BUSINESS_PHOTO", "RECEIPT", "INVOICE", "SUPPLIER_NOTE", "SALES_NOTE", "QRIS_SCREENSHOT", "OTHER"].map((type) => <option key={type}>{type}</option>)}
               </select>
-              <input disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-              <button disabled={!profile?.consent?.consent_given || !file || busy || isFinalLocked} onClick={uploadEvidence} className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <input disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" type="file" accept=".jpg,.jpeg,.png,.pdf,.txt" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+              <button disabled={!consentGiven || !file || busy || isFinalLocked} title={uploadReason || undefined} onClick={uploadEvidence} className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                 <Upload size={16} /> Unggah
               </button>
             </div>
+            <ActionAvailability reasons={[uploadReason]} />
             <div className="mt-4 space-y-2">
               {(profile?.evidence_items ?? []).map((item) => (
                 <div key={item.id} className="flex flex-col gap-2 rounded-md border border-black/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -269,7 +295,11 @@ export default function OnboardingPage() {
                       <span>{item.evidence_type}</span>
                       <EvidenceSourceBadge item={item} />
                       <span>{item.ai_status}</span>
+                      <span>{item.storage_backend === "AZURE_BLOB" ? "Azure Blob private" : "Local file"}</span>
                     </div>
+                    {item.extraction_result?.quality_flags?.length ? (
+                      <p className="mt-2 text-xs text-saffron">{item.extraction_result.quality_flags[0]}</p>
+                    ) : null}
                   </div>
                   <button disabled={busy || isFinalLocked} onClick={() => deleteEvidence(item.id)} className="focus-ring inline-flex items-center justify-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
                     <Trash2 size={16} /> Hapus
@@ -279,16 +309,18 @@ export default function OnboardingPage() {
             </div>
           </Panel>
           <Panel title="5. Instant Evidence Check">
-            <button disabled={!profile?.consent?.consent_given || busy || isFinalLocked} onClick={runCheck} className="focus-ring rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Jalankan check</button>
+            <button disabled={!consentGiven || busy || isFinalLocked} title={checkReason || undefined} onClick={runCheck} className="focus-ring rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Jalankan check</button>
+            <ActionAvailability reasons={[checkReason]} />
             {profile?.latest_instant_check && <CheckResult check={profile.latest_instant_check} />}
             <div className="mt-3 flex flex-wrap gap-2">
-              <button disabled={!profile?.latest_instant_check?.can_submit_to_analyst || busy || isFinalLocked} onClick={submitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md bg-saffron px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <button disabled={!canSubmitToAnalyst || busy || isFinalLocked} title={submitReason || undefined} onClick={submitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md bg-saffron px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                 <Send size={16} /> Kirim ke analis
               </button>
-              <button disabled={!profile || !["READY_FOR_ANALYST", "UNDER_REVIEW"].includes(profile.status) || busy} onClick={undoSubmitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
+              <button disabled={!canUndoSubmit || busy} title={undoReason || undefined} onClick={undoSubmitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
                 <RotateCcw size={16} /> Batalkan Kirim
               </button>
             </div>
+            <ActionAvailability reasons={[submitReason, undoReason]} />
           </Panel>
         </section>
         <ResponsibleAIPanel consentGiven={profile?.consent?.consent_given} />

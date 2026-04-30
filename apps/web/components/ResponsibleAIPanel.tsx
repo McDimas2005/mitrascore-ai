@@ -1,8 +1,13 @@
 import { ShieldCheck } from "lucide-react";
 
 export function ResponsibleAIPanel({ consentGiven }: { consentGiven?: boolean }) {
-  const dataUsed = ["Profil usaha", "Bukti yang diunggah", "Catatan agen", "Hasil OCR mock"];
+  const dataUsed = ["Profil usaha", "Bukti yang diunggah", "Catatan agen", "Hasil OCR/ekstraksi bukti"];
   const dataNotUsed = ["Atribut sensitif", "Pengenalan wajah", "Media sosial", "Data kontak di luar unggahan"];
+  const limitations = [
+    "OCR dan Vision bisa keliru pada bukti buram, terpotong, tulisan tangan, atau pencahayaan rendah.",
+    "Score adalah decision-support, bukan keputusan pembiayaan otomatis.",
+    "Confidence LOW berarti bukti terbatas atau lemah; MEDIUM berarti cukup tetapi masih ada ketidakpastian; HIGH berarti bukti lengkap dan konsisten."
+  ];
   return (
     <section className="mt-5 rounded-md border border-black/10 bg-white p-4">
       <div className="flex items-center gap-2">
@@ -22,6 +27,10 @@ export function ResponsibleAIPanel({ consentGiven }: { consentGiven?: boolean })
             AI tidak menyetujui atau menolak pembiayaan. Keputusan akhir wajib ditinjau manusia dan tercatat di audit log.
           </p>
         </div>
+      </div>
+      <div className="mt-4 rounded-md bg-paper p-3 text-sm">
+        <p className="font-medium">Model limitations</p>
+        <ul className="mt-1 list-disc pl-5 text-black/70">{limitations.map((item) => <li key={item}>{item}</li>)}</ul>
       </div>
     </section>
   );

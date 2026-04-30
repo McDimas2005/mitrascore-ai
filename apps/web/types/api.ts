@@ -30,6 +30,10 @@ export type Review = {
   main_reasons: string[];
   suggested_next_action: string;
   score_breakdown: Record<string, { weight: number; score: number; weighted: number }>;
+  data_used: string[];
+  data_not_used: string[];
+  confidence_explanation: string;
+  model_limitations: string[];
   analyst_notes: string;
   final_human_decision: string;
   final_human_decision_label: string;
@@ -51,6 +55,8 @@ export type EvidenceItem = {
   source_type_summary: string;
   source_type_effect: string;
   original_filename: string;
+  storage_backend: string;
+  storage_reference?: string;
   field_agent_note: string;
   ai_status: string;
   extraction_result?: {
@@ -60,6 +66,20 @@ export type EvidenceItem = {
     confidence_score: number;
     quality_flags: string[];
   };
+};
+
+export type RuntimeStatus = {
+  ai_mode: "mock" | "azure";
+  use_mock_ai: boolean;
+  azure_vision_configured: boolean;
+  azure_document_intelligence_configured: boolean;
+  field_note_summary_mode: string;
+  evidence_search_mode: string;
+  storage_mode: "local" | "azure_blob";
+  use_azure_blob_storage: boolean;
+  azure_blob_configured: boolean;
+  public_blob_urls_enabled: boolean;
+  responsible_ai_notice: string;
 };
 
 export type VerificationReadiness = {

@@ -1,95 +1,111 @@
 # Architecture
 
-MitraScore AI is a monorepo with a DRF API and a Next.js web client.
+MitraScore AI is a Django REST API plus Next.js web client. It keeps mock mode stable for local demos and adds optional Azure adapters behind the existing AI and storage interfaces.
 
-## Backend
+## Backend Apps
 
-Apps:
-
-- `accounts`: custom email-based user model with `UMKM_OWNER`, `FIELD_AGENT`, `ANALYST`, and `ADMIN` roles.
-- `borrowers`: borrower profiles, consent records, onboarding, analyst case views.
-- `evidence`: evidence uploads, source types, extraction results.
+- `accounts`: email-based users with `UMKM_OWNER`, `FIELD_AGENT`, `ANALYST`, and `ADMIN` roles.
+- `borrowers`: borrower profiles, consent records, workflow states, analyst case views.
+- `evidence`: upload validation, local/Blob storage metadata, evidence source labels, extraction results.
 - `scoring`: Instant Evidence Check and Credit Readiness Review.
-- `audit`: immutable-style workflow logs.
-- `ai_services`: deterministic mock clients that mirror Azure Vision, Document Intelligence, Language, and Search responsibilities.
+- `audit`: workflow and AI processing logs.
+- `ai_services`: mock clients plus optional Azure Vision and Document Intelligence clients.
 
-## Flow
+## Azure Service Mapping
+
+| Product area | Local default | Azure optional |
+| --- | --- | --- |
+| Business photo analysis | `MockVisionClient` | Azure AI Vision through Azure AI services |
+| OCR/document extraction | `MockDocumentIntelligenceClient` | Azure AI Document Intelligence |
+| Field note summary | `MockLanguageClient` | Future Azure AI Language or Azure OpenAI adapter |
+| Evidence search/policy context | `MockSearchClient` | Future Azure AI Search adapter |
+| Evidence files | Django local media | Azure Blob Storage private container |
+| Database | SQLite/Postgres | Supabase/Neon/Postgres-compatible demo DB |
+
+Azure AI Language, Azure OpenAI, Azure AI Search, Azure PostgreSQL, Container Apps, AKS, GPU, and Azure ML compute are not required.
+
+## Adapter Selection
+
+`USE_MOCK_AI=true` is the default. In this mode all evidence processing uses deterministic mock clients.
+
+When `USE_MOCK_AI=false`:
+
+- `BUSINESS_PHOTO` evidence uses `AzureVisionClient` if `AZURE_AI_VISION_ENDPOINT` and `AZURE_AI_VISION_KEY` exist.
+- Receipt, invoice, supplier note, sales note, QRIS screenshot, and other document evidence use `AzureDocumentIntelligenceClient` if `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` and `AZURE_DOCUMENT_INTELLIGENCE_KEY` exist.
+- Missing credentials or Azure request failure creates a failed extraction result, records audit logs, and returns a clear fallback message instead of crashing.
+
+## Data Flow
 
 1. User logs in with JWT.
-2. Borrower profile is created or loaded. One UMKM owner can have multiple business profiles; each profile keeps separate evidence, checks, reviews, and final decisions.
+2. Borrower profile is created or loaded.
 3. Consent is recorded before evidence upload or scoring.
-4. UMKM owner uploads evidence directly, or requests field-agent assistance.
-5. Field agent can create assisted cases, upload evidence, mark evidence as assisted or verified, and submit the response back to the analyst queue.
-6. Evidence is uploaded and processed by mock AI services.
-7. Instant Evidence Check determines data sufficiency.
-8. Eligible cases are submitted to analyst queue.
-9. Analyst runs DeepScore Review. This moves the case to `UNDER_REVIEW` until a human decision is saved.
-10. Analyst records a human decision:
-   - `PENDING`: keep the case under human review.
-   - `NEEDS_MORE_DATA`: return the case to owner or field agent for more evidence.
-   - `RECOMMENDED_FOR_REVIEW`: move the case to final financing review.
-   - `APPROVED_FOR_FINANCING`: human approval for the next financing process.
-   - `NOT_RECOMMENDED_AT_THIS_STAGE`: not ready yet; owner can improve and reapply.
-   - `DECLINED`: final human rejection for the current application cycle. Normal owner/field-agent correction, evidence upload, check rerun, and resubmission are locked unless the case is deliberately reopened.
-11. Owner and field agent see the decision, reviewer notes, and role-specific follow-up actions.
-12. If more data is requested, owner or field agent responds with updated profile data/evidence, reruns Instant Evidence Check, and submits the response back to analyst.
+4. UMKM owner uploads evidence, or a field agent uploads assisted/verified evidence.
+5. Uploads are validated by extension, MIME type, and size.
+6. File is saved locally by default. If Blob mode is enabled and configured, the app uploads a private blob and records the blob name without generating a public URL.
+7. Evidence processing runs mock or Azure adapter based on configuration.
+8. Instant Evidence Check determines data sufficiency.
+9. Eligible cases are submitted to analyst queue.
+10. Analyst runs DeepScore Review and records a human decision.
+11. Audit logs capture consent, upload, AI processing, Blob attempts, scoring, submission, and decision updates.
 
-Every borrower profile response includes workflow metadata:
+## Security Flow
 
-- `status_label`: user-facing status.
-- `workflow_stage`: current workflow stage and summary.
-- `role_next_actions`: next actions for UMKM owner, field agent, analyst, and admin.
+- UMKM owners can access only their own profiles.
+- Field agents can access only assigned or created cases.
+- Analysts can list and open only submitted/reviewed cases.
+- Analysts cannot upload or process evidence.
+- Final declined or approved cases are locked for normal owner/field-agent edits.
+- CORS is environment-based.
+- Production must use `DEBUG=false`.
+- Secrets are provided only through environment variables.
 
-## Owner Portfolio
+## Responsible AI Flow
 
-An `UMKM_OWNER` account can manage multiple business profiles. The owner dashboard displays a `Daftar usaha` portfolio list, and selecting a business changes the visible workflow, evidence count, check result, review decision, and next actions for that business only.
+- Consent-first design.
+- No face recognition.
+- No protected attribute scoring.
+- No personal appearance, ethnicity, religion, gender, lifestyle, home luxury, social media, or unrelated contact data as credit signals.
+- Vision extracts only business-relevant indicators such as storefront context, stock/product presence, signage text, quality flags, and confidence.
+- Document Intelligence extracts OCR text, amount, date, merchant/supplier text, item-like lines, confidence, and low-quality flags.
+- DeepScore is deterministic decision-support. It never records approval or rejection by AI.
 
-Important behavior:
+## Deployment Diagram
 
-- Evidence, Instant Evidence Check, DeepScore Review, analyst notes, and final decision are scoped to one business profile.
-- A final decision on one business does not block the owner's other businesses.
-- If one business is `DECLINED`, the owner can still create another business profile with `Tambah usaha`.
-- Field-agent assistance can target the selected business or create a separate assisted draft for a new business.
+```mermaid
+flowchart LR
+  U[UMKM Owner / Field Agent / Analyst] --> W[Next.js Web<br/>Vercel or Azure Static Web Apps]
+  W --> A[Django REST API<br/>Local Docker or Azure App Service]
+  A --> DB[(Postgres-compatible DB<br/>Local / Supabase / Neon)]
+  A --> M[Mock AI adapters<br/>default fallback]
+  A --> V[Azure AI Vision<br/>optional]
+  A --> D[Azure Document Intelligence<br/>optional]
+  A --> B[(Azure Blob Storage<br/>private container, optional)]
+  A --> L[AuditLog]
+```
 
-## Evidence Source Types
+## Deployed Architecture: Vercel + App Service + Neon
 
-Evidence items have source labels that are visible in Bahasa Indonesia:
+```mermaid
+flowchart LR
+  U[UMKM Owner / Field Agent / Analyst] --> V[Vercel<br/>Next.js frontend]
+  V -->|NEXT_PUBLIC_API_URL| API[Azure App Service Free F1<br/>Django REST API + Gunicorn]
+  API -->|DATABASE_URL sslmode=require| N[(Neon PostgreSQL)]
+  API -->|private blob upload| B[(Azure Blob Storage<br/>private container)]
+  API -->|business photo analysis| VIS[Azure AI Vision]
+  API -->|OCR / receipt / invoice / QRIS extraction| DOC[Azure Document Intelligence]
+  API -->|USE_MOCK_AI=true fallback| MOCK[Mock AI adapters]
+  API --> AUD[AuditLog records]
+```
 
-- `SELF_UPLOADED` / `Unggahan owner`: owner uploaded the evidence directly. It can support completeness and OCR, but it is not field-verified.
-- `AGENT_ASSISTED` / `Dibantu agen`: field agent helped collect or upload evidence. This records assistance, but is not a verification claim.
-- `AGENT_VERIFIED` / `Diverifikasi agen`: field agent checked the evidence against observed business context or original documents. A verification note is required.
+Deployment constraints:
 
-The app avoids repeating long meaning/effect text under every evidence row. Detailed meaning is shown where it helps the workflow, while evidence rows use concise badges and agent notes.
+- Azure App Service Free F1 is for demo/trial use and may cold start or sleep.
+- Production evidence storage should use Azure Blob because local App Service storage is limited.
+- Neon is reached only from the backend through `DATABASE_URL`; the frontend never receives database credentials.
+- Vercel receives only `NEXT_PUBLIC_API_URL`.
 
-## Anti-Scam Approval Gate
+## Future Optional Extensions
 
-Analyst review can happen with unverified evidence, but final approval cannot.
-
-Before `APPROVED_FOR_FINANCING`, the profile must have:
-
-- Minimal satu bukti keberadaan usaha yang sudah `Diverifikasi agen`.
-- Minimal dua bukti arus kas atau transaksi yang sudah `Diverifikasi agen`.
-- Catatan verifikasi pada setiap bukti yang ditandai `Diverifikasi agen`.
-
-If this gate is not satisfied, the API blocks final approval and returns verification-readiness details. The analyst should choose `NEEDS_MORE_DATA` or another non-approval decision until the missing verification is completed.
-
-## Final Rejection Lock
-
-`DECLINED` is stricter than `NOT_RECOMMENDED_AT_THIS_STAGE`.
-
-- `NOT_RECOMMENDED_AT_THIS_STAGE` is recoverable: owner or field agent can improve data and submit again.
-- `DECLINED` closes the current application cycle: normal profile edits, evidence changes, check reruns, resubmission, and same-case field-agent assistance are blocked.
-- Analyst or admin can deliberately reopen a declined case by moving the human decision back to `PENDING` when a correction or official reopening is required.
-
-## Scoring
-
-Credit Readiness Score is deterministic and explainable:
-
-- Repayment Capacity: 30%
-- Business Consistency: 25%
-- Evidence Quality: 20%
-- Operational Stability: 15%
-- Risk & Compliance Signals: 10%
-
-The score is a readiness signal only, not a financing decision.
-Final approve or decline outcomes are explicit human decisions recorded by the analyst and audit logged.
+- Azure AI Language or Azure OpenAI can summarize field notes with strict prompts: no automatic decisions, no sensitive attribute scoring, uncertainty must be explained, and human review is required.
+- Azure AI Search can index policy/evidence context later. The current MVP keeps evidence search mocked to avoid paid-tier requirements.
+- A production database can use Azure Database for PostgreSQL later, but it is not required for the hackathon-safe setup.

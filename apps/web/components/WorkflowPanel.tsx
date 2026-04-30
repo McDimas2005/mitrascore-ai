@@ -10,11 +10,16 @@ const roleLabels: Record<Role | "ADMIN", string> = {
 
 export function WorkflowPanel({ profile, role }: { profile: BorrowerProfile; role: Role | "ADMIN" }) {
   const actions = profile.role_next_actions?.[role] ?? [];
+  const isDeclined = profile.workflow_stage?.code === "DECLINED" || profile.latest_review?.final_human_decision === "DECLINED";
+  const panelClass = isDeclined
+    ? "border-red-300 bg-red-50"
+    : "border-mint/30 bg-mint/5";
+  const iconClass = isDeclined ? "text-red-700" : "text-mint";
 
   return (
-    <section className="rounded-md border border-mint/30 bg-mint/5 p-4 text-sm">
+    <section className={`rounded-md border p-4 text-sm ${panelClass}`}>
       <div className="flex items-start gap-3">
-        <ClipboardList size={19} className="mt-0.5 shrink-0 text-mint" />
+        <ClipboardList size={19} className={`mt-0.5 shrink-0 ${iconClass}`} />
         <div>
           <p className="font-semibold text-black">{profile.workflow_stage?.label ?? profile.status_label ?? profile.status}</p>
           <p className="mt-1 text-black/65">{profile.workflow_stage?.summary}</p>

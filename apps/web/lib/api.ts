@@ -1,6 +1,16 @@
-import type { BorrowerProfile, User } from "@/types/api";
+import type { BorrowerProfile, RuntimeStatus, User } from "@/types/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api";
+function apiBase() {
+  const configured = process.env.NEXT_PUBLIC_API_URL || "";
+  let origin = configured.replace(/\/$/, "");
+  if (!origin && typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+    origin = `${window.location.protocol}//${window.location.hostname}:8000`;
+  }
+  if (!origin) {
+    throw new Error("NEXT_PUBLIC_API_URL is required outside local development.");
+  }
+  return origin.endsWith("/api") ? origin : `${origin}/api`;
+}
 
 export function getToken() {
   if (typeof window === "undefined") return null;
@@ -30,7 +40,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const headers = new Headers(options.headers);
   if (!(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const response = await fetch(`${apiBase()}${path}`, { ...options, headers });
   if (response.status === 204) return undefined as T;
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: "Terjadi kesalahan." }));
@@ -40,13 +50,19 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 }
 
 export async function login(email: string, password: string) {
-  const response = await fetch(`${API_BASE}/auth/login/`, {
+  const response = await fetch(`${apiBase()}/auth/login/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
   });
   if (!response.ok) throw new Error("Login gagal. Periksa kredensial demo.");
   return response.json() as Promise<{ access: string; refresh: string; user: User }>;
+}
+
+export async function getRuntimeStatus() {
+  const response = await fetch(`${apiBase()}/runtime-status/`);
+  if (!response.ok) throw new Error("Gagal memuat status runtime.");
+  return response.json() as Promise<RuntimeStatus>;
 }
 
 export const emptyProfile: Partial<BorrowerProfile> = {
