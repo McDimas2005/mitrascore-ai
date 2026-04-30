@@ -8,3 +8,6 @@ apps/api/media/
 node_modules/
 .next/
 .env
+.env.*
+!.env.example
+!.env.*.example

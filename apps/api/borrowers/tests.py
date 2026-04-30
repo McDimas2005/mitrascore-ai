@@ -9,7 +9,7 @@ from accounts.models import User, UserRole
 from ai_services.services import process_evidence_item
 from audit.models import AuditLog
 from borrowers.models import BorrowerProfile, ConsentRecord
-from evidence.models import EvidenceItem, EvidenceType, SourceType
+from evidence.models import AIStatus, EvidenceItem, EvidenceType, SourceType, StorageBackend
 from scoring.models import HumanDecision
 from scoring.services import run_deepscore, run_instant_check
 
@@ -314,6 +314,139 @@ class MitraScoreFlowTests(TestCase):
         result = process_evidence_item(item)
         self.assertEqual(result.extracted_fields["vendor"], "Pemasok Sembako Subang")
         self.assertIn("pembelian stok berulang", result.detected_business_indicators["indicators"])
+        self.assertTrue(AuditLog.objects.filter(action="AI_MOCK_PROCESSING_COMPLETED", entity_id=str(item.id)).exists())
+
+    @override_settings(USE_MOCK_AI=True, AZURE_AI_VISION_ENDPOINT="", AZURE_AI_VISION_KEY="")
+    def test_use_mock_ai_true_forces_mock_adapter_even_without_azure_credentials(self):
+        self.give_consent()
+        item = EvidenceItem.objects.create(
+            borrower_profile=self.profile,
+            evidence_type=EvidenceType.BUSINESS_PHOTO,
+            source_type=SourceType.SELF_UPLOADED,
+            file=SimpleUploadedFile("warung_photo.jpg", b"demo", content_type="image/jpeg"),
+            original_filename="warung_photo.jpg",
+            mime_type="image/jpeg",
+            file_size=4,
+            uploaded_by=self.owner,
+        )
+        result = process_evidence_item(item)
+        item.refresh_from_db()
+        self.assertEqual(item.ai_status, AIStatus.PROCESSED)
+        self.assertEqual(result.service_name, "MockVisionClient+MockDocumentIntelligenceClient")
+
+    @override_settings(USE_MOCK_AI=False, AZURE_AI_VISION_ENDPOINT="", AZURE_AI_VISION_KEY="")
+    def test_missing_azure_credentials_fail_gracefully_without_crashing(self):
+        self.give_consent()
+        item = EvidenceItem.objects.create(
+            borrower_profile=self.profile,
+            evidence_type=EvidenceType.BUSINESS_PHOTO,
+            source_type=SourceType.SELF_UPLOADED,
+            file=SimpleUploadedFile("warung_photo.jpg", b"demo", content_type="image/jpeg"),
+            original_filename="warung_photo.jpg",
+            mime_type="image/jpeg",
+            file_size=4,
+            uploaded_by=self.owner,
+        )
+        result = process_evidence_item(item, actor=self.owner)
+        item.refresh_from_db()
+        self.assertEqual(item.ai_status, AIStatus.FAILED)
+        self.assertIn("Azure AI Vision is not configured", result.extracted_text)
+        self.assertTrue(AuditLog.objects.filter(action="AI_PROCESSING_FAILED", entity_id=str(item.id)).exists())
+
+    @override_settings(USE_AZURE_BLOB_STORAGE=False)
+    def test_evidence_upload_uses_local_storage_by_default_and_sanitizes_filename(self):
+        self.give_consent()
+        self.client.force_authenticate(self.owner)
+        upload = SimpleUploadedFile("../unsafe receipt.pdf", b"demo", content_type="application/pdf")
+        response = self.client.post(
+            f"/api/borrower-profiles/{self.profile.id}/evidence/",
+            {"evidence_type": EvidenceType.RECEIPT, "source_type": SourceType.SELF_UPLOADED, "file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.data["storage_backend"], StorageBackend.LOCAL)
+        self.assertNotIn("..", response.data["original_filename"])
+
+    @override_settings(USE_AZURE_BLOB_STORAGE=True, AZURE_STORAGE_CONNECTION_STRING="", AZURE_STORAGE_CONTAINER_NAME="")
+    def test_blob_storage_missing_env_falls_back_to_local_with_audit_log(self):
+        self.give_consent()
+        self.client.force_authenticate(self.owner)
+        upload = SimpleUploadedFile("receipt.pdf", b"demo", content_type="application/pdf")
+        response = self.client.post(
+            f"/api/borrower-profiles/{self.profile.id}/evidence/",
+            {"evidence_type": EvidenceType.RECEIPT, "source_type": SourceType.SELF_UPLOADED, "file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.data["storage_backend"], StorageBackend.LOCAL)
+        self.assertTrue(AuditLog.objects.filter(action="BLOB_UPLOAD_FALLBACK_LOCAL", entity_id=str(self.profile.id)).exists())
+
+    def test_upload_file_validation_blocks_unsafe_extension(self):
+        self.give_consent()
+        self.client.force_authenticate(self.owner)
+        upload = SimpleUploadedFile("malware.exe", b"demo", content_type="application/octet-stream")
+        response = self.client.post(
+            f"/api/borrower-profiles/{self.profile.id}/evidence/",
+            {"evidence_type": EvidenceType.OTHER, "source_type": SourceType.SELF_UPLOADED, "file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("file", response.data)
+
+    def test_analyst_cannot_open_unsubmitted_case_or_upload_evidence(self):
+        self.give_consent()
+        self.client.force_authenticate(self.analyst)
+        response = self.client.get(f"/api/analyst/cases/{self.profile.id}/")
+        self.assertEqual(response.status_code, 403, response.content)
+        response = self.client.get(f"/api/borrower-profiles/{self.profile.id}/")
+        self.assertEqual(response.status_code, 403, response.content)
+        response = self.client.get("/api/borrower-profiles/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(any(profile["id"] == self.profile.id for profile in response.data))
+        response = self.client.get(f"/api/borrower-profiles/{self.profile.id}/audit-logs/")
+        self.assertEqual(response.status_code, 403, response.content)
+        upload = SimpleUploadedFile("receipt.pdf", b"demo", content_type="application/pdf")
+        response = self.client.post(
+            f"/api/borrower-profiles/{self.profile.id}/evidence/",
+            {"evidence_type": EvidenceType.RECEIPT, "source_type": SourceType.SELF_UPLOADED, "file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+
+    def test_analyst_can_request_field_agent_verification_for_self_onboarded_case(self):
+        self.give_consent()
+        self.add_processed_evidence()
+        run_instant_check(self.profile)
+        self.profile.status = "READY_FOR_ANALYST"
+        self.profile.assisted_by = None
+        self.profile.save(update_fields=["status", "assisted_by"])
+        review = run_deepscore(self.profile, self.analyst)
+        self.client.force_authenticate(self.analyst)
+
+        response = self.client.post(
+            f"/api/analyst/cases/{self.profile.id}/request-field-verification/",
+            {"analyst_notes": "Minta field agent verifikasi foto usaha dan bukti transaksi utama."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.profile.refresh_from_db()
+        review.refresh_from_db()
+        self.assertEqual(self.profile.assisted_by, self.agent)
+        self.assertEqual(self.profile.status, "NEEDS_COMPLETION")
+        self.assertEqual(review.final_human_decision, HumanDecision.NEEDS_MORE_DATA)
+        self.assertIn("field agent", review.analyst_notes)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="FIELD_AGENT_VERIFICATION_REQUESTED",
+                entity_id=str(self.profile.id),
+                metadata__assisted_by=self.agent.id,
+            ).exists()
+        )
+
+        self.client.force_authenticate(self.agent)
+        response = self.client.get("/api/borrower-profiles/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(any(profile["id"] == self.profile.id for profile in response.data))
 
     def test_evidence_source_types_are_explained_and_verified_requires_note(self):
         self.give_consent()

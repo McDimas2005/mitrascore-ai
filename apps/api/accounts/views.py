@@ -5,6 +5,9 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, Toke
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.views import APIView
 
+from ai_services.services import ai_runtime_status
+from evidence.storage import storage_runtime_status
+
 from .serializers import UserSerializer
 
 
@@ -33,3 +36,10 @@ class MeView(APIView):
         if not request.user.is_authenticated:
             raise serializers.ValidationError("Not authenticated")
         return Response(UserSerializer(request.user).data)
+
+
+class RuntimeStatusView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({**ai_runtime_status(), **storage_runtime_status()})

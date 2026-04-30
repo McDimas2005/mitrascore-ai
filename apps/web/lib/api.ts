@@ -1,4 +1,4 @@
-import type { BorrowerProfile, User } from "@/types/api";
+import type { BorrowerProfile, RuntimeStatus, User } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api";
 
@@ -47,6 +47,12 @@ export async function login(email: string, password: string) {
   });
   if (!response.ok) throw new Error("Login gagal. Periksa kredensial demo.");
   return response.json() as Promise<{ access: string; refresh: string; user: User }>;
+}
+
+export async function getRuntimeStatus() {
+  const response = await fetch(`${API_BASE}/runtime-status/`);
+  if (!response.ok) throw new Error("Gagal memuat status runtime.");
+  return response.json() as Promise<RuntimeStatus>;
 }
 
 export const emptyProfile: Partial<BorrowerProfile> = {

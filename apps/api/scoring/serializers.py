@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from ai_services.services import policy_context
+
 from .models import CreditReadinessReview, HumanDecision, InstantEvidenceCheck
 
 
@@ -73,6 +75,10 @@ class CreditReadinessReviewSerializer(serializers.ModelSerializer):
     reviewed_by_email = serializers.EmailField(source="reviewed_by.email", read_only=True)
     final_human_decision_label = serializers.SerializerMethodField()
     follow_up_actions = serializers.SerializerMethodField()
+    data_used = serializers.SerializerMethodField()
+    data_not_used = serializers.SerializerMethodField()
+    confidence_explanation = serializers.SerializerMethodField()
+    model_limitations = serializers.SerializerMethodField()
 
     class Meta:
         model = CreditReadinessReview
@@ -87,6 +93,10 @@ class CreditReadinessReviewSerializer(serializers.ModelSerializer):
             "main_reasons",
             "suggested_next_action",
             "score_breakdown",
+            "data_used",
+            "data_not_used",
+            "confidence_explanation",
+            "model_limitations",
             "analyst_notes",
             "final_human_decision",
             "final_human_decision_label",
@@ -103,3 +113,24 @@ class CreditReadinessReviewSerializer(serializers.ModelSerializer):
 
     def get_follow_up_actions(self, obj):
         return HUMAN_DECISION_FOLLOW_UP_ACTIONS.get(obj.final_human_decision, [])
+
+    def get_data_used(self, obj):
+        return policy_context()["data_used"]
+
+    def get_data_not_used(self, obj):
+        return policy_context()["data_not_used"]
+
+    def get_confidence_explanation(self, obj):
+        return {
+            "HIGH": "Evidence complete and consistent.",
+            "MEDIUM": "Enough evidence but some uncertainty remains.",
+            "LOW": "Limited or weak evidence.",
+        }.get(obj.confidence_level, "Evidence confidence needs human interpretation.")
+
+    def get_model_limitations(self, obj):
+        return [
+            "DeepScore is deterministic decision-support, not an automated financing decision.",
+            "Azure OCR or Vision outputs can miss unclear, cropped, handwritten, or low-light evidence.",
+            "No face recognition, protected attribute scoring, social media scraping, or sensitive attribute inference is used.",
+            "Human analyst review is required for every final financing decision.",
+        ]

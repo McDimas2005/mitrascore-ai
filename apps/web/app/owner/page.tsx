@@ -297,10 +297,17 @@ function AssistRequestForm({
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
+  const numeric = Number(value.replace("%", ""));
+  const showProgress = value.endsWith("%") && Number.isFinite(numeric);
   return (
     <div className="rounded-md border border-black/10 p-3">
       <p className="text-xs text-black/60">{label}</p>
       <p className="mt-1 text-2xl font-semibold">{value}</p>
+      {showProgress && (
+        <div className="mt-2 h-2 rounded bg-black/10">
+          <div className="h-2 rounded bg-mint" style={{ width: `${Math.max(0, Math.min(100, numeric))}%` }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -322,6 +329,9 @@ function ReviewDecisionResult({ review }: { review: BorrowerProfile["latest_revi
           </div>
           <p className={`mt-2 text-lg font-semibold ${isDeclined ? "text-red-800" : ""}`}>{review.final_human_decision_label}</p>
           <p className="mt-1 text-black/60">DeepScore {review.score}/100 | {review.readiness_band} | Confidence {review.confidence_level}</p>
+          <p className="mt-2 rounded-md border border-saffron/40 bg-saffron/10 p-2 text-xs text-black/75">
+            AI hanya mendukung analisis. Keputusan akhir pembiayaan tetap dilakukan oleh analis manusia.
+          </p>
           {reviewedAt && <p className="mt-1 text-xs text-black/50">Diperbarui {reviewedAt}</p>}
         </div>
         <span className={`inline-flex w-fit items-center rounded-md px-2 py-1 text-xs font-medium ${isDeclined ? "bg-red-50 text-red-800" : "bg-paper text-black/70"}`}>

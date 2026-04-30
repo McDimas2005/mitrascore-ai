@@ -13,6 +13,10 @@ export function ScoreCard({ review }: { review: Review }) {
           <p className="text-black/60">Confidence {review.confidence_level}</p>
         </div>
       </div>
+      <p className="mt-3 rounded-md border border-saffron/40 bg-saffron/10 p-3 text-sm text-black/75">
+        AI hanya mendukung analisis. Keputusan akhir pembiayaan tetap dilakukan oleh analis manusia.
+      </p>
+      <p className="mt-3 text-sm text-black/65">Confidence: {review.confidence_explanation}</p>
       <div className="mt-4 space-y-2">
         {Object.entries(review.score_breakdown).map(([key, part]) => (
           <div key={key}>
@@ -25,6 +29,16 @@ export function ScoreCard({ review }: { review: Review }) {
             </div>
           </div>
         ))}
+      </div>
+      <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+        <div className="rounded-md bg-paper p-3">
+          <p className="font-medium">Data used</p>
+          <ul className="mt-1 list-disc pl-5 text-black/70">{(review.data_used ?? []).map((item) => <li key={item}>{item}</li>)}</ul>
+        </div>
+        <div className="rounded-md bg-paper p-3">
+          <p className="font-medium">Data not used</p>
+          <ul className="mt-1 list-disc pl-5 text-black/70">{(review.data_not_used ?? []).map((item) => <li key={item}>{item}</li>)}</ul>
+        </div>
       </div>
     </section>
   );

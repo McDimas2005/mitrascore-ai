@@ -85,7 +85,7 @@ class MockSearchClient:
 
     def retrieve_policy_context(self):
         return {
-            "data_used": ["profil usaha", "bukti usaha yang diunggah", "catatan agen", "hasil OCR mock"],
+            "data_used": ["profil usaha", "bukti usaha yang diunggah", "catatan agen", "hasil OCR/ekstraksi bukti"],
             "data_not_used": ["atribut sensitif", "pengenalan wajah", "media sosial", "kontak pribadi di luar unggahan"],
             "warning": "AI tidak menyetujui atau menolak pembiayaan. Keputusan akhir wajib dilakukan manusia.",
         }

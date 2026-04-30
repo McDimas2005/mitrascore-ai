@@ -1,5 +1,10 @@
+"use client";
+
 import Link from "next/link";
-import { ArrowRight, ClipboardCheck, Handshake, LineChart } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, BadgeCheck, ClipboardCheck, Cloud, Database, Handshake, LineChart } from "lucide-react";
+import { getRuntimeStatus } from "@/lib/api";
+import type { RuntimeStatus } from "@/types/api";
 
 const modes = [
   { title: "UMKM Self-Onboarding", text: "Pemilik usaha memberi persetujuan, mengisi profil, mengunggah bukti, lalu menjalankan Instant Evidence Check.", icon: ClipboardCheck },
@@ -8,6 +13,12 @@ const modes = [
 ];
 
 export default function LandingPage() {
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
+
+  useEffect(() => {
+    getRuntimeStatus().then(setRuntime).catch(() => setRuntime(null));
+  }, []);
+
   return (
     <main className="min-h-screen bg-paper">
       <section className="mx-auto flex min-h-[92vh] max-w-6xl flex-col justify-between px-4 py-8">
@@ -20,6 +31,14 @@ export default function LandingPage() {
         <div className="max-w-3xl">
           <h1 className="text-5xl font-semibold tracking-normal text-ink md:text-7xl">MitraScore AI</h1>
           <p className="mt-5 max-w-2xl text-xl text-black/70">From informal business evidence to explainable credit readiness.</p>
+          {runtime && (
+            <div className="mt-5 inline-flex flex-wrap items-center gap-2 rounded-md border border-black/10 bg-white px-3 py-2 text-sm text-black/70">
+              <BadgeCheck size={16} className="text-mint" />
+              <span>{runtime.ai_mode === "mock" ? "Synthetic demo mode" : "Azure AI mode"}</span>
+              <span>·</span>
+              <span>{runtime.storage_mode === "azure_blob" ? "Private Azure Blob evidence storage" : "Local evidence storage"}</span>
+            </div>
+          )}
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           {modes.map((mode) => {
@@ -32,6 +51,22 @@ export default function LandingPage() {
               </article>
             );
           })}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <article className="rounded-md border border-black/10 bg-white p-4">
+            <Cloud className="text-mint" size={22} />
+            <h2 className="mt-3 font-semibold">Azure-powered workflow</h2>
+            <p className="mt-2 text-sm leading-6 text-black/65">
+              Optional Azure AI Vision reads business photos, Azure Document Intelligence extracts receipt/invoice/QRIS text, and Azure Blob Storage keeps evidence in a private container when configured.
+            </p>
+          </article>
+          <article className="rounded-md border border-black/10 bg-white p-4">
+            <Database className="text-mint" size={22} />
+            <h2 className="mt-3 font-semibold">Best Use of Microsoft Tech</h2>
+            <p className="mt-2 text-sm leading-6 text-black/65">
+              The app keeps a safe mock fallback for demos, uses Azure services only through environment-based adapters, and keeps final financing decisions human-led.
+            </p>
+          </article>
         </div>
       </section>
     </main>

@@ -4,15 +4,17 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowLeft, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getUser, logout } from "@/lib/api";
-import type { User } from "@/types/api";
+import { getRuntimeStatus, getUser, logout } from "@/lib/api";
+import type { RuntimeStatus, User } from "@/types/api";
 
 export function Shell({ children, title }: { children: React.ReactNode; title: string }) {
   const [user, setUser] = useState<User | null>(null);
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     setUser(getUser());
+    getRuntimeStatus().then(setRuntime).catch(() => setRuntime(null));
   }, []);
 
   function fallbackPath() {
@@ -53,6 +55,7 @@ export function Shell({ children, title }: { children: React.ReactNode; title: s
         </div>
       </header>
       <section className="mx-auto max-w-6xl px-4 py-6">
+        {runtime && <ModeBanner runtime={runtime} />}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-semibold">{title}</h1>
           <button
@@ -65,5 +68,21 @@ export function Shell({ children, title }: { children: React.ReactNode; title: s
         {children}
       </section>
     </main>
+  );
+}
+
+function ModeBanner({ runtime }: { runtime: RuntimeStatus }) {
+  const isMock = runtime.ai_mode === "mock";
+  return (
+    <div className={`mb-4 rounded-md border p-3 text-sm ${isMock ? "border-saffron/40 bg-saffron/10" : "border-mint/40 bg-mint/5"}`}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-medium">
+          {isMock ? "Synthetic demo mode aktif" : "Azure AI mode aktif"} · File storage: {runtime.storage_mode === "azure_blob" ? "Azure Blob private container" : "Local storage"}
+        </p>
+        <p className="text-black/65">
+          {runtime.responsible_ai_notice}
+        </p>
+      </div>
+    </div>
   );
 }

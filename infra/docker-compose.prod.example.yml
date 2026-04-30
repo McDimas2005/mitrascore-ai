@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: ../apps/api
+    env_file:
+      - .env
+    environment:
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,<your-api-host>"
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000,https://<your-frontend-host>"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../apps/web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000/api"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mitrascore
+      POSTGRES_USER: mitrascore
+      POSTGRES_PASSWORD: change-me
+    volumes:
+      - mitrascore_prod_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mitrascore -d mitrascore"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mitrascore_prod_postgres:

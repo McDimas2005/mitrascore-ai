@@ -26,6 +26,11 @@ class AIStatus(models.TextChoices):
     SKIPPED = "SKIPPED", "Skipped"
 
 
+class StorageBackend(models.TextChoices):
+    LOCAL = "LOCAL", "Local"
+    AZURE_BLOB = "AZURE_BLOB", "Azure Blob"
+
+
 class EvidenceItem(models.Model):
     borrower_profile = models.ForeignKey("borrowers.BorrowerProfile", related_name="evidence_items", on_delete=models.CASCADE)
     evidence_type = models.CharField(max_length=32, choices=EvidenceType.choices)
@@ -34,6 +39,8 @@ class EvidenceItem(models.Model):
     original_filename = models.CharField(max_length=255)
     mime_type = models.CharField(max_length=120, blank=True)
     file_size = models.PositiveIntegerField(default=0)
+    storage_backend = models.CharField(max_length=24, choices=StorageBackend.choices, default=StorageBackend.LOCAL)
+    storage_reference = models.CharField(max_length=512, blank=True)
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     field_agent_note = models.TextField(blank=True)
     ai_status = models.CharField(max_length=20, choices=AIStatus.choices, default=AIStatus.PENDING)

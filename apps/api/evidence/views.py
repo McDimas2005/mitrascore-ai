@@ -14,6 +14,7 @@ from scoring.services import require_consent
 
 from .models import EvidenceItem
 from .serializers import EvidenceItemSerializer, EvidenceSourceTypeSerializer, EvidenceUploadSerializer
+from .storage import sanitize_upload_filename, store_uploaded_evidence
 
 
 FINAL_LOCKED_MESSAGE = (
@@ -35,6 +36,8 @@ class EvidenceListCreateView(APIView):
 
     def post(self, request, pk):
         profile = self.get_profile(request, pk)
+        if request.user.role == UserRole.ANALYST:
+            raise PermissionDenied("Analysts can review submitted cases but cannot upload evidence.")
         if is_final_locked(profile) and request.user.role != UserRole.ADMIN:
             raise PermissionDenied(FINAL_LOCKED_MESSAGE)
         try:
@@ -44,12 +47,16 @@ class EvidenceListCreateView(APIView):
         serializer = EvidenceUploadSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         upload = serializer.validated_data["file"]
+        safe_filename = sanitize_upload_filename(getattr(upload, "name", "uploaded-evidence"))
+        storage_backend, storage_reference = store_uploaded_evidence(upload, profile, request.user)
         item = serializer.save(
             borrower_profile=profile,
             uploaded_by=request.user,
-            original_filename=getattr(upload, "name", "uploaded-evidence"),
+            original_filename=safe_filename,
             mime_type=getattr(upload, "content_type", ""),
             file_size=getattr(upload, "size", 0) or 0,
+            storage_backend=storage_backend,
+            storage_reference=storage_reference,
         )
         if profile.status in {BorrowerStatus.CONSENTED, BorrowerStatus.DRAFT}:
             profile.status = BorrowerStatus.EVIDENCE_UPLOADED
@@ -84,14 +91,21 @@ class EvidenceProcessView(APIView):
         item = get_object_or_404(EvidenceItem, pk=pk)
         if not can_access_profile(request.user, item.borrower_profile):
             raise PermissionDenied("You cannot access this borrower profile.")
+        if request.user.role == UserRole.ANALYST:
+            raise PermissionDenied("Analysts can review submitted cases but cannot process evidence.")
         if is_final_locked(item.borrower_profile) and request.user.role != UserRole.ADMIN:
             raise PermissionDenied(FINAL_LOCKED_MESSAGE)
         try:
             require_consent(item.borrower_profile)
         except PermissionError as exc:
             raise PermissionDenied(str(exc))
-        result = process_evidence_item(item)
-        log_action(request.user, "EVIDENCE_PROCESSED", item, {"confidence_score": result.confidence_score})
+        result = process_evidence_item(item, actor=request.user)
+        log_action(
+            request.user,
+            "EVIDENCE_PROCESSED",
+            item,
+            {"confidence_score": result.confidence_score, "ai_status": item.ai_status, "service_name": result.service_name},
+        )
         return Response(EvidenceItemSerializer(item, context={"request": request}).data)
 
 

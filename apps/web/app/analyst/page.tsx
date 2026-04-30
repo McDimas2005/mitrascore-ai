@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClipboardCheck, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { ClipboardCheck, Handshake, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { apiFetch, getUser } from "@/lib/api";
 import type { BorrowerProfile, Review, User } from "@/types/api";
+import { ActionAvailability } from "@/components/ActionAvailability";
 import { EvidenceSourceBadge } from "@/components/EvidenceSourceBadge";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ScoreCard } from "@/components/ScoreCard";
@@ -33,6 +34,7 @@ export default function AnalystPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [savingDecision, setSavingDecision] = useState(false);
+  const [requestingVerification, setRequestingVerification] = useState(false);
   const [error, setError] = useState("");
   const [decisionStatus, setDecisionStatus] = useState("");
 
@@ -125,6 +127,35 @@ export default function AnalystPage() {
     }
   }
 
+  async function requestFieldVerification() {
+    const currentCase = selected;
+    if (!currentCase) return;
+    const currentReview = currentCase?.reviews?.[0] ?? currentCase?.latest_review;
+    if (!currentReview) {
+      setError("Jalankan DeepScore dulu sebelum meminta verifikasi field agent.");
+      return;
+    }
+    setRequestingVerification(true);
+    setError("");
+    setDecisionStatus("");
+    try {
+      const detail = await apiFetch<BorrowerProfile>(`/analyst/cases/${currentCase.id}/request-field-verification/`, {
+        method: "POST",
+        body: JSON.stringify({ analyst_notes: notes })
+      });
+      setSelected(detail);
+      setDecision("NEEDS_MORE_DATA");
+      setNotes(detail.reviews?.[0]?.analyst_notes ?? detail.latest_review?.analyst_notes ?? "");
+      setDecisionStatus("Permintaan verifikasi field agent terkirim.");
+      setLogs(await apiFetch<AuditLog[]>(`/borrower-profiles/${currentCase.id}/audit-logs/`));
+      await loadCases();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal meminta verifikasi field agent.");
+    } finally {
+      setRequestingVerification(false);
+    }
+  }
+
   async function deleteSelectedCase() {
     if (!selected || !window.confirm("Hapus kasus ini dari demo lokal?")) return;
     setBusy(true);
@@ -148,6 +179,15 @@ export default function AnalystPage() {
   const savedDecision = review?.final_human_decision;
   const isClosedReview = ["DECLINED", "APPROVED_FOR_FINANCING"].includes(savedDecision ?? "");
   const declinedNeedsNotes = decision === "DECLINED" && !notes.trim();
+  const deepscoreReason = !selected ? "Pilih kasus analis terlebih dahulu." :
+    (isClosedReview ? "Kasus sudah memiliki keputusan final. Buka ulang ke Pending hanya jika ada koreksi resmi." : "");
+  const saveDecisionReason = !review ? "Jalankan DeepScore terlebih dahulu sebelum menyimpan keputusan manusia." :
+    (approvalBlocked ? "Approval belum bisa disimpan karena bukti kunci belum diverifikasi agen." : "") ||
+    (declinedNeedsNotes ? "Alasan penolakan wajib diisi sebelum menyimpan keputusan final." : "");
+  const resetDecisionReason = !review ? "Jalankan DeepScore terlebih dahulu sebelum membatalkan keputusan manusia." : "";
+  const verificationRequestReason = !review ? "Jalankan DeepScore terlebih dahulu sebelum meminta verifikasi field agent." :
+    (isClosedReview ? "Kasus sudah final. Buka ulang ke Pending hanya jika ada koreksi resmi." : "") ||
+    (!selected?.verification_readiness || selected.verification_readiness.approval_ready ? "Verifikasi kunci sudah terpenuhi, tidak perlu request verifikasi tambahan." : "");
 
   return (
     <Shell title="Dashboard Analis Kredit">
@@ -176,7 +216,7 @@ export default function AnalystPage() {
                   <p className="mt-1 text-sm font-medium text-mint">{selected.status_label ?? selected.status}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button disabled={busy || isClosedReview} onClick={deepscore} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  <button disabled={busy || isClosedReview} title={deepscoreReason || undefined} onClick={deepscore} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                     <RefreshCw size={16} /> DeepScore
                   </button>
                   {user?.role === "ADMIN" && (
@@ -186,6 +226,7 @@ export default function AnalystPage() {
                   )}
                 </div>
               </div>
+              <ActionAvailability reasons={[deepscoreReason]} />
             </div>
             <WorkflowPanel profile={selected} role={user?.role === "ADMIN" ? "ADMIN" : "ANALYST"} />
             {isClosedReview && (
@@ -207,8 +248,12 @@ export default function AnalystPage() {
                       <span>{item.evidence_type}</span>
                       <EvidenceSourceBadge item={item} />
                       <span>{item.ai_status}</span>
+                      <span>{item.storage_backend === "AZURE_BLOB" ? "Azure Blob private" : "Local file"}</span>
                     </div>
                     {item.field_agent_note && <p className="mt-2 text-xs text-black/60">Catatan agen: {item.field_agent_note}</p>}
+                    {item.extraction_result?.quality_flags?.length ? (
+                      <p className="mt-2 text-xs text-saffron">{item.extraction_result.quality_flags.join("; ")}</p>
+                    ) : null}
                     <p className="mt-2 text-black/70">{item.extraction_result?.extracted_text ?? "Belum diproses."}</p>
                   </div>
                 ))}
@@ -250,13 +295,22 @@ export default function AnalystPage() {
                   <p className="mt-2 text-sm font-medium text-red-700">Alasan penolakan wajib diisi sebelum menyimpan keputusan final.</p>
                 )}
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <button disabled={!review || busy || savingDecision || Boolean(approvalBlocked) || declinedNeedsNotes} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  <button disabled={!review || busy || savingDecision || Boolean(approvalBlocked) || declinedNeedsNotes} title={saveDecisionReason || undefined} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                     <ClipboardCheck size={16} /> {savingDecision ? "Menyimpan..." : "Simpan"}
                   </button>
-                  <button disabled={!review || busy || savingDecision} onClick={resetDecision} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
+                  <button
+                    disabled={!review || requestingVerification || isClosedReview || Boolean(selected?.verification_readiness?.approval_ready)}
+                    title={verificationRequestReason || undefined}
+                    onClick={requestFieldVerification}
+                    className="focus-ring inline-flex items-center gap-2 rounded-md bg-saffron px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    <Handshake size={16} /> {requestingVerification ? "Mengirim..." : "Minta verifikasi agen"}
+                  </button>
+                  <button disabled={!review || busy || savingDecision} title={resetDecisionReason || undefined} onClick={resetDecision} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
                     <RotateCcw size={16} /> {isClosedReview ? "Buka ulang ke Pending" : "Undo ke Pending"}
                   </button>
                 </div>
+                <ActionAvailability reasons={[saveDecisionReason, verificationRequestReason, resetDecisionReason]} />
                 {decisionStatus && <p className="mt-2 text-sm font-medium text-mint">{decisionStatus}</p>}
               </Panel>
               <Panel title="Audit trail">
