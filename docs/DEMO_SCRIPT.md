@@ -162,8 +162,8 @@ Analyst:
 
 1. Before selecting approval, check the verification readiness panel.
 2. If approval is blocked, confirm the panel explains what is missing:
-   - Minimal satu bukti keberadaan usaha yang sudah diverifikasi.
-   - At least two verified cashflow or transaction evidence items.
+   - Minimal satu bukti keberadaan usaha yang sudah `Diverifikasi agen`.
+   - Minimal dua bukti arus kas atau transaksi yang sudah `Diverifikasi agen`.
    - Catatan verifikasi pada setiap bukti `Diverifikasi agen`.
 3. If blocked, choose `Perlu data tambahan` and request verification by field agent.
 4. After the missing evidence is verified, set decision to `Setujui untuk proses pembiayaan`.
@@ -326,7 +326,7 @@ Use the Field Agent Dashboard.
 6. Run Instant Evidence Check.
    Expected: evidence quality can improve because verified evidence adds weight.
 7. Open Analyst Dashboard.
-   Expected: analyst can see source meaning, source effect, and agent note.
+   Expected: analyst can see source badges and agent notes without repeated meaning/effect text under every evidence row.
 
 ## 8. Anti-Scam Approval Gate Checks
 
@@ -380,14 +380,16 @@ Exact score can vary slightly after you add or verify evidence.
 A full successful demo should prove:
 
 1. Owner can self-onboard, consent, upload evidence, check readiness, and submit.
-2. Owner can request field-agent help.
-3. Field agent can assist, verify evidence, explain evidence source status, run check, and submit to analyst.
-4. Analyst can run DeepScore and make every human decision type.
-5. `NEEDS_MORE_DATA` creates a clear request-response loop back to owner/agent and then back to analyst.
-6. `APPROVED_FOR_FINANCING` and `DECLINED` are explicit human decisions.
-7. Approval is blocked until decision-critical evidence is agent verified.
-8. All roles see clear workflow stage, next actions, notes, verification readiness, and audit history.
-9. Responsible AI boundary is visible: DeepScore is advisory; final decision is human.
+2. Owner can manage multiple usaha profiles without mixing evidence or decisions.
+3. Owner can request field-agent help for a selected business or for a new assisted business draft.
+4. Field agent can assist, verify evidence, explain evidence source status, run check, and submit to analyst.
+5. Analyst can run DeepScore and make every human decision type.
+6. `NEEDS_MORE_DATA` creates a clear request-response loop back to owner/agent and then back to analyst.
+7. `APPROVED_FOR_FINANCING` and `DECLINED` are explicit human decisions.
+8. Approval is blocked until decision-critical evidence is `Diverifikasi agen`.
+9. `DECLINED` locks the current application cycle, while `NOT_RECOMMENDED_AT_THIS_STAGE` remains recoverable.
+10. All roles see clear workflow stage, next actions, notes, verification readiness, and audit history.
+11. Responsible AI boundary is visible: DeepScore is advisory; final decision is human.
 
 ## 12. Reset Demo State Again
 

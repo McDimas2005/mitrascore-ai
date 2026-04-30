@@ -2,6 +2,8 @@
 
 Use this prompt in GPT to create realistic local dummy files for MitraScore AI uploads. Ask GPT to produce downloadable files when the chat tool supports file creation, or to produce file contents that you can save locally.
 
+The current demo supports multiple businesses per UMKM owner. Keep each generated evidence pack scoped to one business only, so evidence from one usaha is not mixed into another usaha.
+
 ```text
 You are helping me create realistic dummy UMKM business evidence files for a local fintech demo called MitraScore AI.
 
@@ -66,6 +68,8 @@ Generate these dummy files:
    - customer traffic
    - supplier receipt checked
    - financing purpose verified
+   - what evidence can be marked as Dibantu agen
+   - what evidence can be marked as Diverifikasi agen
    - remaining questions for analyst
 
 Output format:
@@ -84,6 +88,18 @@ Suggested MitraScore evidence type mapping:
 - `daily_sales_note_toko_andi_jaya.txt`: `SALES_NOTE`
 - `qris_transaction_summary_toko_andi_jaya.txt`: `QRIS_SCREENSHOT`
 - `field_agent_observation_note.txt`: use as field-agent observation note, or upload as `OTHER`
+
+Suggested MitraScore source type usage:
+
+- Owner-uploaded files should use `SELF_UPLOADED` / `Unggahan owner`.
+- Evidence collected or uploaded by field agent but not checked should use `AGENT_ASSISTED` / `Dibantu agen`.
+- Evidence checked against observed business context or original documents should use `AGENT_VERIFIED` / `Diverifikasi agen` and must include a field-agent note.
+
+For final financing approval testing, prepare enough content for the anti-scam gate:
+
+- Minimal satu business-presence evidence item, usually `BUSINESS_PHOTO`, that a field agent can mark as `Diverifikasi agen`.
+- Minimal dua cashflow or transaction evidence items, such as `RECEIPT`, `SALES_NOTE`, `SUPPLIER_NOTE`, or `QRIS_SCREENSHOT`, that a field agent can mark as `Diverifikasi agen`.
+- Clear notes explaining what the field agent checked for every `Diverifikasi agen` item.
 
 Also create one simple dummy JPG-style image prompt for business_photo_toko_andi_jaya.jpg, but ensure it contains no faces, no real people, no license plates, and no real personal data.
 
