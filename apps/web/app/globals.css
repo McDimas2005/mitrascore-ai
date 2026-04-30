@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  background: #f7f8f4;
+}
+
+body {
+  color: #17201a;
+}
+
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-mint focus:ring-offset-2;
+}
