@@ -798,6 +798,18 @@ class SeedDemoDataCommandTests(TestCase):
         self.assertEqual(User.objects.filter(email="fieldagent@mitrascore.demo").count(), 1)
         self.assertEqual(User.objects.filter(email="analyst@mitrascore.demo").count(), 1)
         self.assertEqual(User.objects.filter(email="admin@mitrascore.demo").count(), 1)
+        expected_roles = {
+            "umkm@mitrascore.demo": UserRole.UMKM_OWNER,
+            "umkm2@mitrascore.demo": UserRole.UMKM_OWNER,
+            "fieldagent@mitrascore.demo": UserRole.FIELD_AGENT,
+            "analyst@mitrascore.demo": UserRole.ANALYST,
+            "admin@mitrascore.demo": UserRole.ADMIN,
+        }
+        for email, role in expected_roles.items():
+            user = User.objects.get(email=email)
+            self.assertEqual(user.role, role)
+            self.assertTrue(user.check_password("Demo123!"))
+            self.assertNotEqual(user.password, "Demo123!")
         self.assertEqual(BorrowerProfile.objects.filter(business_name="Warung Ibu Sari").count(), 1)
         profile = BorrowerProfile.objects.get(business_name="Warung Ibu Sari")
         self.assertEqual(profile.instant_checks.count(), 1)

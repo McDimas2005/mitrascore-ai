@@ -50,12 +50,26 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 }
 
 export async function login(email: string, password: string) {
-  const response = await fetch(`${apiBase()}/auth/login/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password })
-  });
-  if (!response.ok) throw new Error("Login gagal. Periksa kredensial demo.");
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase()}/auth/login/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+  } catch {
+    throw new Error("Tidak dapat terhubung ke API. Periksa koneksi atau konfigurasi CORS.");
+  }
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    if (response.status === 400) {
+      const message = detail?.email?.[0] || detail?.password?.[0] || detail?.detail || "Email dan password wajib diisi.";
+      throw new Error(message);
+    }
+    if (response.status === 401) throw new Error(detail?.detail || "Login gagal. Periksa kredensial demo.");
+    if (response.status >= 500) throw new Error(detail?.detail || "Server API sedang bermasalah. Coba lagi nanti.");
+    throw new Error(detail?.detail || "Login gagal.");
+  }
   return response.json() as Promise<{ access: string; refresh: string; user: User }>;
 }
 

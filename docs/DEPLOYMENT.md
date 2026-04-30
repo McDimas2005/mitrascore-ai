@@ -143,10 +143,12 @@ The API does not depend heavily on static files, but admin/static assets work wi
 
 ### Migrations and Demo Seed
 
-Run after first deployment:
+Run after first deployment from Azure App Service SSH/Kudu. If `/home/site/wwwroot` only contains Oryx files such as `output.tar.zst`, find the extracted runtime directory first:
 
 ```bash
-python manage.py migrate
+pid=$(pgrep -f 'gunicorn.*config.wsgi' | head -1)
+cd "$(readlink -f /proc/$pid/cwd)"
+python manage.py migrate --noinput
 python manage.py seed_demo_data
 ```
 
@@ -158,6 +160,8 @@ python manage.py seed_demo_data
 - `analyst@mitrascore.demo` / `Demo123!`
 - `admin@mitrascore.demo` / `Demo123!`
 - Warung Ibu Sari starter case.
+
+If `DATABASE_URL` is copied from a command such as `psql 'postgresql://...'`, store only the PostgreSQL URL in Azure App Service. Do not include `psql`, spaces, or surrounding quotes.
 
 ## 3. Azure Blob Storage
 
@@ -234,8 +238,11 @@ For a custom domain, add it to the same settings.
 Backend:
 
 ```bash
-curl https://<app-name>.<region>.azurewebsites.net/api/health/
-curl https://<app-name>.<region>.azurewebsites.net/api/runtime-status/
+curl -i https://<backend-host>/api/health/
+curl -i https://<backend-host>/api/runtime-status/
+curl -i -X POST "https://<backend-host>/api/auth/login/" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"analyst@mitrascore.demo","password":"Demo123!"}'
 ```
 
 Expected:
@@ -244,6 +251,7 @@ Expected:
 - The endpoint returns HTTP 200 even when status is `degraded`, so you can inspect the JSON during Neon cold starts or credential issues.
 - `database_reachable` is `true`.
 - `blob_mode` is `azure_blob` when Blob settings are enabled.
+- `/api/auth/login/` returns HTTP 200 with `access`, `refresh`, and `user` fields.
 
 Frontend:
 
@@ -265,6 +273,8 @@ Frontend:
 - Blob issue: set `USE_AZURE_BLOB_STORAGE=false` only for local/emergency debugging. For App Service B1, restore Blob as soon as possible because local App Service storage is not the production evidence store.
 - Bad deploy: use Azure App Service deployment center rollback or redeploy the previous commit.
 - Database issue: verify Neon is active, pooled URL is correct, and SSL mode is required.
+- Login returns 500: inspect Azure Portal > App Service > Log stream. The login view logs unexpected exception class and message without passwords or tokens.
+- App returns 503: inspect Azure Log stream and confirm `Startup command: bash startup.sh`, `WEBSITES_PORT=8000`, and that `DATABASE_URL` contains only the PostgreSQL URL.
 
 ## 9. Local Development Still Works
 

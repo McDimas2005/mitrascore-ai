@@ -164,6 +164,31 @@ Draft CI workflow is in `.github/workflows/ci.yml`.
 
 ## Troubleshooting
 
+- Backend health check:
+
+```bash
+curl -i https://<backend-host>/api/health/
+```
+
+- Backend login check:
+
+```bash
+curl -i -X POST "https://<backend-host>/api/auth/login/" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"analyst@mitrascore.demo","password":"Demo123!"}'
+```
+
+- Run migrations and demo seed from Azure SSH/Kudu:
+
+```bash
+pid=$(pgrep -f 'gunicorn.*config.wsgi' | head -1)
+cd "$(readlink -f /proc/$pid/cwd)"
+python manage.py migrate --noinput
+python manage.py seed_demo_data
+```
+
+- Azure logs: use Azure Portal > App Service > Log stream for startup and login exceptions.
+- Azure `DATABASE_URL`: store only the PostgreSQL URL, not `psql '...'` or surrounding quotes.
 - Azure evidence processing fails: confirm `USE_MOCK_AI=false` and both endpoint/key variables are present for the evidence type.
 - Demo must continue during Azure outage: set `USE_MOCK_AI=true` and rerun processing.
 - Blob upload falls back to local: confirm `USE_AZURE_BLOB_STORAGE=true`, connection string, container name, SDK dependency, and private container permissions.
