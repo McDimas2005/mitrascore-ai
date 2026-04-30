@@ -13,8 +13,6 @@ from rest_framework.views import APIView
 from ai_services.services import ai_runtime_status
 from evidence.storage import storage_runtime_status
 
-from .serializers import LoginSerializer, UserSerializer
-
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +32,8 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from .serializers import LoginSerializer
+
         serializer = LoginSerializer(data=request.data, context={"request": request})
         try:
             if not serializer.is_valid():
@@ -63,6 +63,8 @@ class RefreshView(TokenRefreshView):
 
 class MeView(APIView):
     def get(self, request):
+        from .serializers import UserSerializer
+
         if not request.user.is_authenticated:
             raise serializers.ValidationError("Not authenticated")
         return Response(UserSerializer(request.user).data)

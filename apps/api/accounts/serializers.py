@@ -1,8 +1,3 @@
-from datetime import datetime, timezone
-import uuid
-
-from django.conf import settings
-import jwt
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -45,10 +40,10 @@ class LoginSerializer(serializers.Serializer):
         if not user.is_active:
             raise serializers.ValidationError({"detail": self.error_messages["inactive_account"]}, code="authorization")
 
-        access, refresh = self._token_pair(user)
+        refresh = RefreshToken.for_user(user)
         return {
-            "refresh": refresh,
-            "access": access,
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
             "user": self._user_payload(user),
         }
 
@@ -59,41 +54,6 @@ class LoginSerializer(serializers.Serializer):
             User().set_password(password)
             return None
         return user if user.check_password(password) else None
-
-    def _token_pair(self, user):
-        try:
-            refresh = RefreshToken.for_user(user)
-            return str(refresh.access_token), str(refresh)
-        except Exception:
-            return self._manual_token_pair(user)
-
-    def _manual_token_pair(self, user):
-        now = datetime.now(timezone.utc)
-        signing_key = settings.SIMPLE_JWT.get("SIGNING_KEY") or settings.SECRET_KEY
-        algorithm = settings.SIMPLE_JWT.get("ALGORITHM", "HS256")
-        access = jwt.encode(
-            {
-                "token_type": "access",
-                "exp": now + settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"],
-                "iat": now,
-                "jti": uuid.uuid4().hex,
-                "user_id": user.id,
-            },
-            signing_key,
-            algorithm=algorithm,
-        )
-        refresh = jwt.encode(
-            {
-                "token_type": "refresh",
-                "exp": now + settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"],
-                "iat": now,
-                "jti": uuid.uuid4().hex,
-                "user_id": user.id,
-            },
-            signing_key,
-            algorithm=algorithm,
-        )
-        return access, refresh
 
     def _user_payload(self, user):
         return {

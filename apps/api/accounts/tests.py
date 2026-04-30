@@ -2,7 +2,6 @@ from django.contrib.auth import authenticate
 from django.test import TestCase, override_settings
 from unittest.mock import patch
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import User, UserRole
 
@@ -114,9 +113,12 @@ class LoginApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data["user"]["email"], "analyst@mitrascore.demo")
 
-    def test_login_token_fallback_still_returns_valid_access_token(self):
-        with patch("accounts.serializers.RefreshToken.for_user", side_effect=RuntimeError("token backend unavailable")):
-            response = self.post_login({"email": "analyst@mitrascore.demo", "password": self.password})
+
+@override_settings(ALLOWED_HOSTS=["testserver"], SECURE_SSL_REDIRECT=False)
+class HealthEndpointIsolationTests(TestCase):
+    def test_health_does_not_import_login_serializer(self):
+        client = APIClient()
+        with patch("accounts.serializers.LoginSerializer", side_effect=RuntimeError("login serializer unavailable")):
+            response = client.get("/api/health/")
         self.assertEqual(response.status_code, 200, response.content)
-        validated = JWTAuthentication().get_validated_token(response.data["access"])
-        self.assertEqual(validated["user_id"], User.objects.get(email="analyst@mitrascore.demo").id)
+        self.assertIn("database_reachable", response.data)
