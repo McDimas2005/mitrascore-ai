@@ -41,7 +41,7 @@ Pricing plan: Basic B1
 Always On: On
 HTTPS Only: On
 Remote build/Oryx: SCM_DO_BUILD_DURING_DEPLOYMENT=true
-Startup command: gunicorn config.wsgi:application --bind=0.0.0.0:8000 --timeout 600
+Startup command: bash startup.sh
 ```
 
 ### App Service Settings
@@ -51,8 +51,8 @@ Set these in Azure Portal > App Service > Environment variables:
 ```text
 DEBUG=false
 SECRET_KEY=<strong-random-secret>
-ALLOWED_HOSTS=<app-name>.azurewebsites.net
-CSRF_TRUSTED_ORIGINS=https://<frontend-domain>.vercel.app,https://<app-name>.azurewebsites.net
+ALLOWED_HOSTS=<app-name>.<region>.azurewebsites.net,<app-name>.azurewebsites.net
+CSRF_TRUSTED_ORIGINS=https://<frontend-domain>.vercel.app,https://<app-name>.<region>.azurewebsites.net
 CORS_ALLOWED_ORIGINS=https://<frontend-domain>.vercel.app
 DATABASE_URL=<Neon pooled PostgreSQL URL>
 DATABASE_SSL_REQUIRE=true
@@ -84,10 +84,10 @@ DJANGO_SECURE_HSTS_PRELOAD=true
 
 ### Startup Command
 
-Use the actual Django project module `config`:
+Use the included startup script:
 
 ```bash
-gunicorn config.wsgi:application --bind=0.0.0.0:8000 --timeout 600
+bash startup.sh
 ```
 
 If you need a one-time migration during setup, run it from SSH/Kudu instead of putting migrations permanently into the startup command.
@@ -201,14 +201,20 @@ If Azure processing fails, evidence gets a failed-processing state and audit log
 3. Framework preset: Next.js.
 4. Build command: `npm run build`.
 5. Install command: `npm ci`.
-6. Output: default Vercel Next.js output.
+6. Output Directory: leave blank/default. Do not set it to `public`; the Next.js preset detects the correct build output automatically.
 7. Set environment variable:
 
 ```text
 NEXT_PUBLIC_API_URL=https://<app-name>.azurewebsites.net
 ```
 
-The frontend appends `/api` internally. Do not include secrets in Vercel env vars. After the first production deployment, copy the Vercel production URL into the Azure CORS and CSRF settings.
+For newer Azure default hostnames, use the full generated hostname, for example:
+
+```text
+NEXT_PUBLIC_API_URL=https://app-mitrascore-api-demo-d7dabgfhe3g3a6gu.indonesiacentral-01.azurewebsites.net
+```
+
+The frontend appends `/api` internally. Use exactly one backend origin, not a comma-separated list. Do not include secrets in Vercel env vars. After the first production deployment, copy the Vercel production URL into the Azure CORS and CSRF settings.
 
 ## 6. CORS and CSRF
 
@@ -216,8 +222,8 @@ After Vercel deployment, copy the Vercel domain into Azure App Service:
 
 ```text
 CORS_ALLOWED_ORIGINS=https://<frontend-domain>.vercel.app
-CSRF_TRUSTED_ORIGINS=https://<frontend-domain>.vercel.app,https://<app-name>.azurewebsites.net
-ALLOWED_HOSTS=<app-name>.azurewebsites.net
+CSRF_TRUSTED_ORIGINS=https://<frontend-domain>.vercel.app,https://<app-name>.<region>.azurewebsites.net
+ALLOWED_HOSTS=<app-name>.<region>.azurewebsites.net,<app-name>.azurewebsites.net
 ```
 
 For a custom domain, add it to the same settings.
@@ -227,8 +233,8 @@ For a custom domain, add it to the same settings.
 Backend:
 
 ```bash
-curl https://<app-name>.azurewebsites.net/api/health/
-curl https://<app-name>.azurewebsites.net/api/runtime-status/
+curl https://<app-name>.<region>.azurewebsites.net/api/health/
+curl https://<app-name>.<region>.azurewebsites.net/api/runtime-status/
 ```
 
 Expected:

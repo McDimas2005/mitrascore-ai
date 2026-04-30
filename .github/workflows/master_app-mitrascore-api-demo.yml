@@ -56,6 +56,11 @@ jobs:
           USE_MOCK_AI: "true"
           USE_AZURE_BLOB_STORAGE: "false"
 
+      - name: Vendor runtime dependencies
+        run: |
+          rm -rf .python_packages
+          python -m pip install --target=".python_packages/lib/site-packages" -r requirements.txt
+
       - name: Deploy API package
         uses: azure/webapps-deploy@v3
         with:

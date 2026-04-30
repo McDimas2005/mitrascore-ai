@@ -114,7 +114,7 @@ When Blob upload succeeds, deployed evidence is referenced by private blob name 
 - `MAX_EVIDENCE_UPLOAD_BYTES`: default `8388608`.
 - `ALLOWED_EVIDENCE_EXTENSIONS`: default `jpg,jpeg,png,pdf,txt`.
 - `ALLOWED_EVIDENCE_MIME_TYPES`: safe demo MIME allow-list.
-- `NEXT_PUBLIC_API_URL`: frontend API origin, for example `https://<app-name>.azurewebsites.net`.
+- `NEXT_PUBLIC_API_URL`: frontend API origin, for example `https://<app-name>.<region>.azurewebsites.net`.
 - `AZURE_LANGUAGE_*`, `AZURE_OPENAI_*`, `AZURE_SEARCH_*`: placeholders for future optional extensions only.
 
 ## Tests
@@ -156,7 +156,7 @@ Backend production notes:
 - Set `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` to real deployed domains.
 - Keep Azure keys in platform secrets, not in git.
 - Keep App Service Always On enabled on the B1 plan.
-- Azure startup command: `gunicorn config.wsgi:application --bind=0.0.0.0:8000 --timeout 600`.
+- Azure startup command: `bash startup.sh`.
 - First deployment commands: `python manage.py migrate`, `python manage.py collectstatic --noinput`, and `python manage.py seed_demo_data`.
 
 Draft CI workflow is in `.github/workflows/ci.yml`.
