@@ -1,3 +1,8 @@
+from datetime import datetime, timezone
+import uuid
+
+from django.conf import settings
+import jwt
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -21,8 +26,6 @@ class LoginSerializer(serializers.Serializer):
     }
 
     def validate(self, attrs):
-        from django.contrib.auth import authenticate
-
         errors = {}
         if self.initial_data.get("username") and not self.initial_data.get("email"):
             errors["email"] = [self.error_messages["username_not_supported"]]
@@ -35,19 +38,70 @@ class LoginSerializer(serializers.Serializer):
 
         email = attrs["email"].strip().lower()
         password = attrs["password"]
-        request = self.context.get("request")
 
-        user = authenticate(request=request, email=email, password=password)
-        if user is None:
-            user = authenticate(request=request, username=email, password=password)
+        user = self._authenticate_email(email, password)
         if user is None:
             raise serializers.ValidationError({"detail": self.error_messages["invalid_credentials"]}, code="authorization")
         if not user.is_active:
             raise serializers.ValidationError({"detail": self.error_messages["inactive_account"]}, code="authorization")
 
-        refresh = RefreshToken.for_user(user)
+        access, refresh = self._token_pair(user)
         return {
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
-            "user": UserSerializer(user).data,
+            "refresh": refresh,
+            "access": access,
+            "user": self._user_payload(user),
+        }
+
+    def _authenticate_email(self, email, password):
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            User().set_password(password)
+            return None
+        return user if user.check_password(password) else None
+
+    def _token_pair(self, user):
+        try:
+            refresh = RefreshToken.for_user(user)
+            return str(refresh.access_token), str(refresh)
+        except Exception:
+            return self._manual_token_pair(user)
+
+    def _manual_token_pair(self, user):
+        now = datetime.now(timezone.utc)
+        signing_key = settings.SIMPLE_JWT.get("SIGNING_KEY") or settings.SECRET_KEY
+        algorithm = settings.SIMPLE_JWT.get("ALGORITHM", "HS256")
+        access = jwt.encode(
+            {
+                "token_type": "access",
+                "exp": now + settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"],
+                "iat": now,
+                "jti": uuid.uuid4().hex,
+                "user_id": user.id,
+            },
+            signing_key,
+            algorithm=algorithm,
+        )
+        refresh = jwt.encode(
+            {
+                "token_type": "refresh",
+                "exp": now + settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"],
+                "iat": now,
+                "jti": uuid.uuid4().hex,
+                "user_id": user.id,
+            },
+            signing_key,
+            algorithm=algorithm,
+        )
+        return access, refresh
+
+    def _user_payload(self, user):
+        return {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+            "is_active": user.is_active,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         }

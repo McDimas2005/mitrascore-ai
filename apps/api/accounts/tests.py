@@ -1,6 +1,8 @@
 from django.contrib.auth import authenticate
 from django.test import TestCase, override_settings
+from unittest.mock import patch
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import User, UserRole
 
@@ -106,3 +108,15 @@ class LoginApiTests(TestCase):
         user = authenticate(email="analyst@mitrascore.demo", password=self.password)
         self.assertIsNotNone(user)
         self.assertEqual(user.email, "analyst@mitrascore.demo")
+
+    def test_login_supports_uppercase_email_input(self):
+        response = self.post_login({"email": "ANALYST@MITRASCORE.DEMO", "password": self.password})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["user"]["email"], "analyst@mitrascore.demo")
+
+    def test_login_token_fallback_still_returns_valid_access_token(self):
+        with patch("accounts.serializers.RefreshToken.for_user", side_effect=RuntimeError("token backend unavailable")):
+            response = self.post_login({"email": "analyst@mitrascore.demo", "password": self.password})
+        self.assertEqual(response.status_code, 200, response.content)
+        validated = JWTAuthentication().get_validated_token(response.data["access"])
+        self.assertEqual(validated["user_id"], User.objects.get(email="analyst@mitrascore.demo").id)
