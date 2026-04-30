@@ -16,7 +16,7 @@ Apps:
 ## Flow
 
 1. User logs in with JWT.
-2. Borrower profile is created or loaded.
+2. Borrower profile is created or loaded. One UMKM owner can have multiple business profiles; each profile keeps separate evidence, checks, reviews, and final decisions.
 3. Consent is recorded before evidence upload or scoring.
 4. UMKM owner uploads evidence directly, or requests field-agent assistance.
 5. Field agent can create assisted cases, upload evidence, mark evidence as assisted or verified, and submit the response back to the analyst queue.
@@ -30,7 +30,7 @@ Apps:
    - `RECOMMENDED_FOR_REVIEW`: move the case to final financing review.
    - `APPROVED_FOR_FINANCING`: human approval for the next financing process.
    - `NOT_RECOMMENDED_AT_THIS_STAGE`: not ready yet; owner can improve and reapply.
-   - `DECLINED`: human rejection with reviewer notes.
+   - `DECLINED`: final human rejection for the current application cycle. Normal owner/field-agent correction, evidence upload, check rerun, and resubmission are locked unless the case is deliberately reopened.
 11. Owner and field agent see the decision, reviewer notes, and role-specific follow-up actions.
 12. If more data is requested, owner or field agent responds with updated profile data/evidence, reruns Instant Evidence Check, and submits the response back to analyst.
 

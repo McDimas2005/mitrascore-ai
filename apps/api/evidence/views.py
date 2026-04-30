@@ -9,10 +9,17 @@ from ai_services.services import process_evidence_item
 from audit.services import log_action
 from borrowers.models import BorrowerProfile, BorrowerStatus
 from borrowers.permissions import can_access_profile
+from borrowers.workflow import is_final_locked
 from scoring.services import require_consent
 
 from .models import EvidenceItem
 from .serializers import EvidenceItemSerializer, EvidenceSourceTypeSerializer, EvidenceUploadSerializer
+
+
+FINAL_LOCKED_MESSAGE = (
+    "Pengajuan ini sudah ditutup oleh keputusan review manusia. "
+    "Bukti pada siklus ini tidak dapat diubah, ditambah, diproses ulang, atau dihapus oleh owner/field agent."
+)
 
 
 class EvidenceListCreateView(APIView):
@@ -28,6 +35,8 @@ class EvidenceListCreateView(APIView):
 
     def post(self, request, pk):
         profile = self.get_profile(request, pk)
+        if is_final_locked(profile) and request.user.role != UserRole.ADMIN:
+            raise PermissionDenied(FINAL_LOCKED_MESSAGE)
         try:
             require_consent(profile)
         except PermissionError as exc:
@@ -56,6 +65,8 @@ class EvidenceSourceTypeView(APIView):
             raise PermissionDenied("Only field agents can update source type.")
         if not can_access_profile(request.user, item.borrower_profile):
             raise PermissionDenied("You cannot access this borrower profile.")
+        if is_final_locked(item.borrower_profile):
+            raise PermissionDenied(FINAL_LOCKED_MESSAGE)
         serializer = EvidenceSourceTypeSerializer(item, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -73,6 +84,8 @@ class EvidenceProcessView(APIView):
         item = get_object_or_404(EvidenceItem, pk=pk)
         if not can_access_profile(request.user, item.borrower_profile):
             raise PermissionDenied("You cannot access this borrower profile.")
+        if is_final_locked(item.borrower_profile) and request.user.role != UserRole.ADMIN:
+            raise PermissionDenied(FINAL_LOCKED_MESSAGE)
         try:
             require_consent(item.borrower_profile)
         except PermissionError as exc:
@@ -87,6 +100,8 @@ class EvidenceDetailView(APIView):
         item = get_object_or_404(EvidenceItem, pk=pk)
         if not can_access_profile(request.user, item.borrower_profile):
             raise PermissionDenied("You cannot access this borrower profile.")
+        if is_final_locked(item.borrower_profile) and request.user.role != UserRole.ADMIN:
+            raise PermissionDenied(FINAL_LOCKED_MESSAGE)
         if item.borrower_profile.reviews.exists() and request.user.role != UserRole.ADMIN:
             raise PermissionDenied("Evidence from reviewed cases can only be deleted by admin in this local demo.")
         metadata = {

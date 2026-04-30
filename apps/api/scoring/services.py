@@ -55,20 +55,20 @@ def verification_readiness(profile):
     missing_requirements = []
     if len(verified_business_presence) < MIN_VERIFIED_BUSINESS_PRESENCE:
         missing_requirements.append(
-            "Verify at least one business-presence evidence item, such as a business photo checked during a field visit."
+            "Verifikasi minimal satu bukti keberadaan usaha, misalnya foto usaha yang dicek saat kunjungan."
         )
     if len(verified_cashflow) < MIN_VERIFIED_CASHFLOW:
         missing_requirements.append(
-            "Verify at least two cashflow or transaction evidence items, such as receipts, invoices, supplier notes, sales notes, or QRIS records."
+            "Verifikasi minimal dua bukti arus kas atau transaksi, seperti nota, invoice, catatan pemasok, catatan penjualan, atau QRIS."
         )
     if verified_without_notes:
-        missing_requirements.append("Add verification notes to every agent-verified evidence item.")
+        missing_requirements.append("Tambahkan catatan verifikasi pada setiap bukti yang ditandai diverifikasi agen.")
 
     approval_ready = not missing_requirements
     confidence_cap = ConfidenceLevel.HIGH if approval_ready else ConfidenceLevel.MEDIUM if verified_items else ConfidenceLevel.LOW
     return {
         "approval_ready": approval_ready,
-        "policy_summary": "Approval requires verified decision-critical evidence: at least one verified business-presence item and two verified cashflow/transaction items, each with agent notes.",
+        "policy_summary": "Approval membutuhkan bukti kunci yang sudah diverifikasi agen: minimal satu bukti keberadaan usaha dan dua bukti arus kas/transaksi, masing-masing dengan catatan agen.",
         "verified_business_presence_count": len(verified_business_presence),
         "required_verified_business_presence_count": MIN_VERIFIED_BUSINESS_PRESENCE,
         "verified_cashflow_count": len(verified_cashflow),

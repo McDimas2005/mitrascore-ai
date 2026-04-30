@@ -39,7 +39,7 @@ DeepScore can screen self-uploaded or assisted evidence, but unverified evidence
 
 Before `APPROVED_FOR_FINANCING`, the case must include:
 
-- At least one agent-verified business-presence evidence item.
+- Minimal satu bukti keberadaan usaha yang diverifikasi agen.
 - At least two agent-verified cashflow or transaction evidence items.
 - Verification notes on every agent-verified evidence item.
 

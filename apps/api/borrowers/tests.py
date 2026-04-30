@@ -89,6 +89,49 @@ class MitraScoreFlowTests(TestCase):
         response = self.client.get("/api/analyst/cases/")
         self.assertEqual(response.status_code, 403)
 
+    def test_umkm_owner_can_have_multiple_business_profiles(self):
+        second_profile = BorrowerProfile.objects.create(
+            owner=self.owner,
+            business_name="Catering Test",
+            business_category="Katering rumahan",
+            business_duration_months=12,
+            financing_purpose="Tambah alat masak",
+            requested_amount=Decimal("3000000"),
+            estimated_monthly_revenue=Decimal("8000000"),
+            estimated_monthly_expense=Decimal("5500000"),
+            simple_cashflow_note="Pesanan mingguan stabil.",
+            business_note="Usaha terpisah dari warung.",
+            created_by=self.owner,
+        )
+        other_owner = User.objects.create_user("owner2@test.local", "Demo123!", full_name="Owner 2", role=UserRole.UMKM_OWNER)
+        other_profile = BorrowerProfile.objects.create(
+            owner=other_owner,
+            business_name="Laundry Owner Lain",
+            business_category="Laundry",
+            created_by=other_owner,
+        )
+        self.client.force_authenticate(self.owner)
+
+        response = self.client.get("/api/borrower-profiles/")
+        self.assertEqual(response.status_code, 200, response.content)
+        profile_ids = {profile["id"] for profile in response.data}
+        self.assertIn(self.profile.id, profile_ids)
+        self.assertIn(second_profile.id, profile_ids)
+        self.assertNotIn(other_profile.id, profile_ids)
+
+        response = self.client.post(
+            "/api/borrower-profiles/",
+            {
+                "business_name": "Reseller Test",
+                "business_category": "Reseller makanan",
+                "financing_purpose": "Tambah stok reseller",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.data["owner"], self.owner.id)
+        self.assertEqual(response.data["business_name"], "Reseller Test")
+
     def test_completeness_scoring_allows_submission_when_sufficient(self):
         self.give_consent()
         self.add_processed_evidence()
@@ -177,6 +220,79 @@ class MitraScoreFlowTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data["assisted_by_detail"]["id"], self.agent.id)
 
+    def test_declined_review_locks_same_application_from_normal_corrections(self):
+        self.give_consent()
+        self.add_processed_evidence()
+        run_instant_check(self.profile)
+        review = run_deepscore(self.profile, self.analyst)
+        self.client.force_authenticate(self.analyst)
+        response = self.client.patch(
+            f"/api/analyst/reviews/{review.id}/decision/",
+            {"final_human_decision": "DECLINED", "analyst_notes": "Ditolak karena bukti arus kas tidak konsisten."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["final_human_decision_label"], "Ditolak final pada review manusia")
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.patch(
+            f"/api/borrower-profiles/{self.profile.id}/",
+            {"simple_cashflow_note": "Owner mencoba memperbaiki kasus yang sudah ditolak."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+
+        upload = SimpleUploadedFile("after_decline_receipt.pdf", b"demo", content_type="application/pdf")
+        response = self.client.post(
+            f"/api/borrower-profiles/{self.profile.id}/evidence/",
+            {"evidence_type": EvidenceType.RECEIPT, "source_type": SourceType.SELF_UPLOADED, "file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+
+        response = self.client.post(f"/api/borrower-profiles/{self.profile.id}/instant-check/", {}, format="json")
+        self.assertEqual(response.status_code, 403, response.content)
+
+        response = self.client.post(f"/api/borrower-profiles/{self.profile.id}/submit-to-analyst/", {}, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+
+        self.profile.assisted_by = None
+        self.profile.save(update_fields=["assisted_by"])
+        response = self.client.post(
+            "/api/borrower-profiles/request-field-agent-assist/",
+            {"profile_id": self.profile.id, "assistance_note": "Minta bantuan untuk kasus yang sudah ditolak."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_not_recommended_remains_recoverable_for_owner_or_agent_response(self):
+        self.give_consent()
+        self.add_processed_evidence()
+        run_instant_check(self.profile)
+        review = run_deepscore(self.profile, self.analyst)
+        self.client.force_authenticate(self.analyst)
+        response = self.client.patch(
+            f"/api/analyst/reviews/{review.id}/decision/",
+            {
+                "final_human_decision": "NOT_RECOMMENDED_AT_THIS_STAGE",
+                "analyst_notes": "Perlu bukti arus kas yang lebih kuat sebelum direview lagi.",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.patch(
+            f"/api/borrower-profiles/{self.profile.id}/",
+            {"simple_cashflow_note": "Owner menambahkan ringkasan transaksi harian yang lebih lengkap."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        response = self.client.post(f"/api/borrower-profiles/{self.profile.id}/submit-to-analyst/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["workflow_stage"]["code"], "ANALYST_QUEUE")
+
     def test_audit_log_creation_on_consent_endpoint(self):
         self.client.force_authenticate(self.owner)
         response = self.client.post(f"/api/borrower-profiles/{self.profile.id}/consent/", {"consent_given": True}, format="json")
@@ -226,8 +342,8 @@ class MitraScoreFlowTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.data["source_type_label"], "Agent verified")
-        self.assertIn("evidence-quality", response.data["source_type_effect"])
+        self.assertEqual(response.data["source_type_label"], "Diverifikasi agen")
+        self.assertIn("kualitas bukti", response.data["source_type_effect"])
 
     def test_umkm_owner_can_request_field_agent_assistance(self):
         self.client.force_authenticate(self.owner)

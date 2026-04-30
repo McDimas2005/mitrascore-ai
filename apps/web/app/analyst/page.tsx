@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ClipboardCheck, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { apiFetch, getUser } from "@/lib/api";
 import type { BorrowerProfile, Review, User } from "@/types/api";
-import { EvidenceSourceBadge, EvidenceSourceDetails } from "@/components/EvidenceSourceBadge";
+import { EvidenceSourceBadge } from "@/components/EvidenceSourceBadge";
 import { ResponsibleAIPanel } from "@/components/ResponsibleAIPanel";
 import { ScoreCard } from "@/components/ScoreCard";
 import { Empty, ErrorMessage, Loading } from "@/components/State";
@@ -145,6 +145,9 @@ export default function AnalystPage() {
   const review = selected?.reviews?.[0] ?? selected?.latest_review;
   const check = selected?.instant_checks?.[0] ?? selected?.latest_instant_check;
   const approvalBlocked = decision === "APPROVED_FOR_FINANCING" && selected?.verification_readiness && !selected.verification_readiness.approval_ready;
+  const savedDecision = review?.final_human_decision;
+  const isClosedReview = ["DECLINED", "APPROVED_FOR_FINANCING"].includes(savedDecision ?? "");
+  const declinedNeedsNotes = decision === "DECLINED" && !notes.trim();
 
   return (
     <Shell title="Dashboard Analis Kredit">
@@ -173,7 +176,7 @@ export default function AnalystPage() {
                   <p className="mt-1 text-sm font-medium text-mint">{selected.status_label ?? selected.status}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button disabled={busy} onClick={deepscore} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  <button disabled={busy || isClosedReview} onClick={deepscore} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                     <RefreshCw size={16} /> DeepScore
                   </button>
                   {user?.role === "ADMIN" && (
@@ -185,6 +188,14 @@ export default function AnalystPage() {
               </div>
             </div>
             <WorkflowPanel profile={selected} role={user?.role === "ADMIN" ? "ADMIN" : "ANALYST"} />
+            {isClosedReview && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                <p className="font-semibold">Kasus berada pada keputusan final</p>
+                <p className="mt-1">
+                  DeepScore ulang dan perubahan owner/field agent diblokir. Gunakan undo ke pending hanya untuk koreksi keputusan atau pembukaan ulang resmi.
+                </p>
+              </div>
+            )}
             <VerificationReadinessPanel profile={selected} />
             {review && <ScoreCard review={review} />}
             <div className="grid gap-4 xl:grid-cols-2">
@@ -197,7 +208,7 @@ export default function AnalystPage() {
                       <EvidenceSourceBadge item={item} />
                       <span>{item.ai_status}</span>
                     </div>
-                    <EvidenceSourceDetails item={item} />
+                    {item.field_agent_note && <p className="mt-2 text-xs text-black/60">Catatan agen: {item.field_agent_note}</p>}
                     <p className="mt-2 text-black/70">{item.extraction_result?.extracted_text ?? "Belum diproses."}</p>
                   </div>
                 ))}
@@ -226,16 +237,24 @@ export default function AnalystPage() {
                 )}
                 {approvalBlocked && (
                   <p className="mt-2 rounded-md border border-saffron/40 bg-saffron/10 p-2 text-sm text-black/75">
-                    Persetujuan diblokir sampai bukti kunci diverifikasi field agent sesuai panel anti-scam.
+                    Approval belum siap. Minta field agent memverifikasi bukti kunci sesuai panel verifikasi.
+                  </p>
+                )}
+                {decision === "DECLINED" && (
+                  <p className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-900">
+                    Penolakan akan menutup siklus pengajuan ini. Owner dan field agent tidak bisa mengubah, menambah bukti, atau kirim ulang kecuali kasus dibuka ulang.
                   </p>
                 )}
                 <textarea className="focus-ring mt-2 min-h-24 w-full rounded-md border border-black/15 px-3 py-2 text-sm" placeholder="Catatan analis, permintaan data, atau alasan keputusan" value={notes} onChange={(event) => { setNotes(event.target.value); setDecisionStatus(""); }} />
+                {declinedNeedsNotes && (
+                  <p className="mt-2 text-sm font-medium text-red-700">Alasan penolakan wajib diisi sebelum menyimpan keputusan final.</p>
+                )}
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <button disabled={!review || busy || savingDecision || Boolean(approvalBlocked)} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  <button disabled={!review || busy || savingDecision || Boolean(approvalBlocked) || declinedNeedsNotes} onClick={saveDecision} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                     <ClipboardCheck size={16} /> {savingDecision ? "Menyimpan..." : "Simpan"}
                   </button>
                   <button disabled={!review || busy || savingDecision} onClick={resetDecision} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
-                    <RotateCcw size={16} /> Undo ke Pending
+                    <RotateCcw size={16} /> {isClosedReview ? "Buka ulang ke Pending" : "Undo ke Pending"}
                   </button>
                 </div>
                 {decisionStatus && <p className="mt-2 text-sm font-medium text-mint">{decisionStatus}</p>}

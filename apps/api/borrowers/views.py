@@ -21,11 +21,18 @@ from .serializers import (
     ConsentCreateSerializer,
     ConsentRecordSerializer,
 )
+from .workflow import RECOVERABLE_REVIEW_DECISIONS, is_final_locked, latest_decision
 
 
 CONSENT_TEXT = (
     "Saya setuju data usaha dan bukti yang saya berikan diproses untuk menilai kesiapan kredit. "
     "AI hanya membantu analisis dan tidak menyetujui atau menolak pembiayaan."
+)
+
+
+FINAL_LOCKED_MESSAGE = (
+    "Pengajuan ini sudah ditutup oleh keputusan review manusia. "
+    "Perubahan, unggah bukti, check ulang, dan kirim ulang tidak tersedia untuk siklus yang sama."
 )
 
 
@@ -74,12 +81,11 @@ class RequestFieldAgentAssistView(APIView):
         profile = None
         if profile_id:
             profile = get_object_or_404(BorrowerProfile, pk=profile_id, owner=request.user)
-            latest_review = profile.reviews.first()
-            if latest_review and latest_review.final_human_decision not in {
-                HumanDecision.NEEDS_MORE_DATA,
-                HumanDecision.NOT_RECOMMENDED_AT_THIS_STAGE,
-                HumanDecision.DECLINED,
-            }:
+            if latest_decision(profile) == HumanDecision.DECLINED:
+                raise ValidationError(
+                    "Pengajuan ini sudah ditolak dan ditutup. Minta bantuan agen melalui pengajuan baru atau kanal klarifikasi resmi."
+                )
+            if latest_decision(profile) and latest_decision(profile) not in RECOVERABLE_REVIEW_DECISIONS:
                 raise ValidationError("Reviewed cases cannot request new field agent assistance.")
         if not profile:
             profile = (
@@ -142,6 +148,8 @@ class BorrowerProfileDetailView(APIView):
 
     def patch(self, request, pk):
         profile = self.get_object(request, pk)
+        if is_final_locked(profile) and request.user.role != UserRole.ADMIN:
+            raise PermissionDenied(FINAL_LOCKED_MESSAGE)
         serializer = BorrowerProfileSerializer(profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -201,6 +209,8 @@ class InstantCheckRunView(APIView):
         profile = get_object_or_404(BorrowerProfile, pk=pk)
         if not can_access_profile(request.user, profile):
             raise PermissionDenied("You cannot access this borrower profile.")
+        if is_final_locked(profile) and request.user.role != UserRole.ADMIN:
+            raise PermissionDenied(FINAL_LOCKED_MESSAGE)
         try:
             check = run_instant_check(profile)
         except PermissionError as exc:
@@ -225,6 +235,8 @@ class SubmitToAnalystView(APIView):
         profile = get_object_or_404(BorrowerProfile, pk=pk)
         if not can_access_profile(request.user, profile):
             raise PermissionDenied("You cannot access this borrower profile.")
+        if is_final_locked(profile):
+            raise ValidationError(FINAL_LOCKED_MESSAGE)
         try:
             require_consent(profile)
         except PermissionError as exc:
@@ -296,16 +308,19 @@ class ReviewDecisionView(APIView):
         decision = request.data.get("final_human_decision")
         if decision not in HumanDecision.values:
             raise ValidationError("Invalid decision.")
+        analyst_notes = request.data.get("analyst_notes", review.analyst_notes)
+        if decision == HumanDecision.DECLINED and not analyst_notes.strip():
+            raise ValidationError({"analyst_notes": "Alasan penolakan wajib diisi agar owner memahami keputusan final."})
         readiness = verification_readiness(review.borrower_profile)
         if decision == HumanDecision.APPROVED_FOR_FINANCING and not readiness["approval_ready"]:
             raise ValidationError(
                 {
-                    "detail": "Approval blocked: decision-critical evidence must be agent verified before financing approval.",
+                    "detail": "Approval belum bisa disimpan: bukti kunci perlu diverifikasi agen sebelum persetujuan pembiayaan.",
                     "verification_readiness": readiness,
                 }
             )
         review.final_human_decision = decision
-        review.analyst_notes = request.data.get("analyst_notes", review.analyst_notes)
+        review.analyst_notes = analyst_notes
         review.reviewed_by = request.user
         review.reviewed_at = timezone.now()
         review.save(update_fields=["final_human_decision", "analyst_notes", "reviewed_by", "reviewed_at"])

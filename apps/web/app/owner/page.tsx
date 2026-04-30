@@ -11,21 +11,29 @@ import { Shell } from "@/components/Shell";
 import { VerificationReadinessPanel } from "@/components/VerificationReadinessPanel";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 
+const emptyAssistForm = {
+  store_address: "",
+  contact_phone: "",
+  preferred_visit_time: "",
+  assistance_note: ""
+};
+
 export default function OwnerDashboard() {
   const [profiles, setProfiles] = useState<BorrowerProfile[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [requestingAssist, setRequestingAssist] = useState(false);
-  const [assistForm, setAssistForm] = useState({
-    store_address: "",
-    contact_phone: "",
-    preferred_visit_time: "",
-    assistance_note: ""
-  });
+  const [assistForm, setAssistForm] = useState(emptyAssistForm);
   const [error, setError] = useState("");
 
   async function load() {
     try {
-      setProfiles(await apiFetch<BorrowerProfile[]>("/borrower-profiles/"));
+      const data = await apiFetch<BorrowerProfile[]>("/borrower-profiles/");
+      setProfiles(data);
+      setSelectedProfileId((current) => {
+        if (current && data.some((item) => item.id === current)) return current;
+        return data[0]?.id ?? null;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal memuat dashboard.");
     } finally {
@@ -37,28 +45,31 @@ export default function OwnerDashboard() {
     load();
   }, []);
 
-  const profile = profiles[0];
+  const profile = profiles.find((item) => item.id === selectedProfileId) ?? profiles[0] ?? null;
   const check = profile?.latest_instant_check;
   const review = profile?.latest_review;
+  const isFinalLocked = ["DECLINED", "APPROVED_FOR_FINANCING"].includes(review?.final_human_decision ?? "");
   const canRequestAssist = !profile?.assisted_by_detail && (
     !profile ||
     ["DRAFT", "CONSENTED", "EVIDENCE_UPLOADED", "NEEDS_COMPLETION"].includes(profile.status) ||
-    ["NEEDS_MORE_DATA", "NOT_RECOMMENDED_AT_THIS_STAGE", "DECLINED"].includes(review?.final_human_decision ?? "")
+    ["NEEDS_MORE_DATA", "NOT_RECOMMENDED_AT_THIS_STAGE"].includes(review?.final_human_decision ?? "")
   );
 
-  async function requestFieldAgentAssist() {
+  async function requestFieldAgentAssist(targetProfile: BorrowerProfile | null = profile) {
     setRequestingAssist(true);
     setError("");
     try {
       const assistedProfile = await apiFetch<BorrowerProfile>("/borrower-profiles/request-field-agent-assist/", {
         method: "POST",
         body: JSON.stringify({
-          profile_id: profile?.id,
-          business_name: profile?.business_name,
+          profile_id: targetProfile?.id,
+          business_name: targetProfile?.business_name,
           ...assistForm
         })
       });
       setProfiles([assistedProfile, ...profiles.filter((item) => item.id !== assistedProfile.id)]);
+      setSelectedProfileId(assistedProfile.id);
+      setAssistForm(emptyAssistForm);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal meminta bantuan agen.");
     } finally {
@@ -70,36 +81,59 @@ export default function OwnerDashboard() {
     <Shell title="Dashboard Pemilik UMKM">
       {loading && <Loading />}
       {error && <ErrorMessage error={error} />}
-      {!loading && !profile && (
-        <section className="mt-5 rounded-md border border-black/10 bg-white p-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm text-black/60">Belum ada profil usaha</p>
-              <h2 className="mt-1 text-xl font-semibold">Mulai onboarding pertama</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-black/65">
-                Buat profil usaha, berikan persetujuan, unggah bukti, lalu jalankan Instant Evidence Check.
+      {!loading && (
+        <div className="mt-5 grid gap-4 xl:grid-cols-[300px_1fr_360px]">
+          <aside className="rounded-md border border-black/10 bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm text-black/60">Portofolio owner</p>
+                <h2 className="font-semibold">Daftar usaha</h2>
+              </div>
+              <span className="rounded-md bg-paper px-2 py-1 text-xs font-medium text-black/60">{profiles.length}</span>
+            </div>
+            <Link
+              href="/onboarding"
+              className="focus-ring mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white"
+            >
+              <PlusCircle size={17} /> Tambah usaha
+            </Link>
+            {profiles.length ? (
+              <div className="mt-4 space-y-2">
+                {profiles.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedProfileId(item.id)}
+                    className={`focus-ring w-full rounded-md border px-3 py-2 text-left text-sm ${
+                      profile?.id === item.id ? "border-mint bg-mint/5" : "border-black/10 bg-white"
+                    }`}
+                  >
+                    <span className="block font-medium">{item.business_name}</span>
+                    <span className="mt-1 block text-black/60">{item.business_category || "Kategori belum diisi"}</span>
+                    <span className="mt-1 block text-xs text-black/50">{item.workflow_stage?.label ?? item.status_label ?? item.status}</span>
+                    {item.latest_review?.final_human_decision_label && (
+                      <span className="mt-2 inline-flex rounded-md bg-paper px-2 py-1 text-xs font-medium text-black/65">
+                        {item.latest_review.final_human_decision_label}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm leading-6 text-black/65">
+                Belum ada usaha. Owner dapat membuat lebih dari satu profil usaha, masing-masing dengan bukti, review, dan keputusan sendiri.
               </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Link
-                href="/onboarding"
-                className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-mint px-4 py-2 text-sm font-medium text-white"
-              >
-                <PlusCircle size={17} /> Mulai Onboarding
-              </Link>
-            </div>
-          </div>
-          <AssistRequestForm
-            values={assistForm}
-            onChange={setAssistForm}
-            onSubmit={requestFieldAgentAssist}
-            busy={requestingAssist}
-            title="Butuh bantuan agen?"
-          />
-        </section>
-      )}
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_360px]">
-        {profile && (
+            )}
+            {profiles.length > 0 && (
+              <AssistRequestForm
+                values={assistForm}
+                onChange={setAssistForm}
+                onSubmit={() => requestFieldAgentAssist(null)}
+                busy={requestingAssist}
+                title="Bantuan agen untuk usaha baru"
+              />
+            )}
+          </aside>
+          {profile ? (
           <section className="rounded-md border border-black/10 bg-white p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -110,9 +144,20 @@ export default function OwnerDashboard() {
                   <p className="mt-1 text-sm text-mint">Dibantu oleh {profile.assisted_by_detail.full_name}</p>
                 )}
               </div>
-              <Link href={`/onboarding?id=${profile.id}`} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white">
-                Lanjutkan <ArrowRight size={16} />
-              </Link>
+              {isFinalLocked ? (
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <span className="inline-flex items-center justify-center rounded-md border border-black/15 px-3 py-2 text-sm font-medium text-black/55">
+                    Siklus selesai
+                  </span>
+                  <Link href="/onboarding" className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white">
+                    <PlusCircle size={16} /> Pengajuan baru
+                  </Link>
+                </div>
+              ) : (
+                <Link href={`/onboarding?id=${profile.id}`} className="focus-ring inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white">
+                  Lanjutkan <ArrowRight size={16} />
+                </Link>
+              )}
             </div>
             <div className="mt-5">
               <WorkflowPanel profile={profile} role="UMKM_OWNER" />
@@ -153,15 +198,41 @@ export default function OwnerDashboard() {
               <AssistRequestForm
                 values={assistForm}
                 onChange={setAssistForm}
-                onSubmit={requestFieldAgentAssist}
+                onSubmit={() => requestFieldAgentAssist(profile)}
                 busy={requestingAssist}
                 title="Minta bantuan field agent untuk profil ini"
               />
             )}
           </section>
-        )}
-        <ResponsibleAIPanel consentGiven={profile?.consent?.consent_given} />
-      </div>
+          ) : (
+            <section className="rounded-md border border-black/10 bg-white p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-black/60">Belum ada profil usaha</p>
+                  <h2 className="mt-1 text-xl font-semibold">Mulai onboarding pertama</h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-black/65">
+                    Buat profil usaha, berikan persetujuan, unggah bukti, lalu jalankan Instant Evidence Check.
+                  </p>
+                </div>
+                <Link
+                  href="/onboarding"
+                  className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-mint px-4 py-2 text-sm font-medium text-white"
+                >
+                  <PlusCircle size={17} /> Mulai Onboarding
+                </Link>
+              </div>
+              <AssistRequestForm
+                values={assistForm}
+                onChange={setAssistForm}
+                onSubmit={() => requestFieldAgentAssist(null)}
+                busy={requestingAssist}
+                title="Butuh bantuan agen?"
+              />
+            </section>
+          )}
+          <ResponsibleAIPanel consentGiven={profile?.consent?.consent_given} />
+        </div>
+      )}
     </Shell>
   );
 }
@@ -236,26 +307,35 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function ReviewDecisionResult({ review }: { review: BorrowerProfile["latest_review"] }) {
   if (!review) return null;
+  const isDeclined = review.final_human_decision === "DECLINED";
   const reviewedAt = review.reviewed_at
     ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(review.reviewed_at))
     : null;
 
   return (
-    <div className="mt-5 rounded-md border border-mint/30 bg-white p-4 text-sm">
+    <div className={`mt-5 rounded-md border bg-white p-4 text-sm ${isDeclined ? "border-red-200" : "border-mint/30"}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <CheckCircle2 size={18} className="text-mint" />
+            <CheckCircle2 size={18} className={isDeclined ? "text-red-700" : "text-mint"} />
             <p className="font-semibold">Hasil review manusia</p>
           </div>
-          <p className="mt-2 text-lg font-semibold">{review.final_human_decision_label}</p>
+          <p className={`mt-2 text-lg font-semibold ${isDeclined ? "text-red-800" : ""}`}>{review.final_human_decision_label}</p>
           <p className="mt-1 text-black/60">DeepScore {review.score}/100 | {review.readiness_band} | Confidence {review.confidence_level}</p>
           {reviewedAt && <p className="mt-1 text-xs text-black/50">Diperbarui {reviewedAt}</p>}
         </div>
-        <span className="inline-flex w-fit items-center rounded-md bg-paper px-2 py-1 text-xs font-medium text-black/70">
+        <span className={`inline-flex w-fit items-center rounded-md px-2 py-1 text-xs font-medium ${isDeclined ? "bg-red-50 text-red-800" : "bg-paper text-black/70"}`}>
           {review.final_human_decision}
         </span>
       </div>
+      {isDeclined && (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-red-900">
+          <p className="font-medium">Pengajuan ditutup untuk siklus ini</p>
+          <p className="mt-1 text-red-900/80">
+            Owner tidak dapat mengubah profil, menambah bukti, menjalankan check ulang, atau mengirim ulang kasus ini dari jalur koreksi biasa.
+          </p>
+        </div>
+      )}
       {review.analyst_notes && (
         <div className="mt-4 rounded-md bg-paper p-3">
           <div className="flex items-center gap-2 font-medium">
@@ -271,7 +351,7 @@ function ReviewDecisionResult({ review }: { review: BorrowerProfile["latest_revi
           {review.follow_up_actions.map((action) => <li key={action}>{action}</li>)}
         </ul>
       </div>
-      {review.suggested_next_action && (
+      {review.suggested_next_action && !isDeclined && (
         <p className="mt-3 rounded-md border border-black/10 p-3 text-black/65">
           Rekomendasi DeepScore: {review.suggested_next_action}
         </p>

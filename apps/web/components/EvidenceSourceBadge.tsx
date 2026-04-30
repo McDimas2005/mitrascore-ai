@@ -16,13 +16,3 @@ export function EvidenceSourceBadge({ item }: { item: EvidenceItem }) {
     </span>
   );
 }
-
-export function EvidenceSourceDetails({ item }: { item: EvidenceItem }) {
-  return (
-    <div className="mt-2 rounded-md bg-paper p-2 text-xs leading-5 text-black/65">
-      <p><span className="font-medium text-black/75">Meaning:</span> {item.source_type_summary}</p>
-      <p><span className="font-medium text-black/75">Effect:</span> {item.source_type_effect}</p>
-      {item.field_agent_note && <p><span className="font-medium text-black/75">Agent note:</span> {item.field_agent_note}</p>}
-    </div>
-  );
-}

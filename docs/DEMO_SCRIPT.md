@@ -46,25 +46,27 @@ For every role and case, confirm these are visible and understandable:
 4. Available buttons match the current state. Disabled actions should make sense.
 5. Audit trail records important transitions such as consent, submit, DeepScore, human decision, evidence updates, and resubmission.
 6. Responsible AI message remains clear: AI/DeepScore does not approve or reject financing; the analyst records the human decision.
+7. Owner dashboard supports more than one usaha. Each usaha must keep its own evidence, workflow, review result, and next actions.
 
 ## 2. Seeded Happy Path: Owner To Analyst
 
 Login as `umkm@mitrascore.demo`.
 
 1. Open Owner Dashboard.
-2. Confirm Warung Ibu Sari appears.
-3. Confirm workflow panel explains the current owner action.
-4. Click `Lanjutkan`.
-5. Confirm consent is already visible.
-6. Review profile fields and evidence list.
-7. In evidence list, confirm source badges are understandable:
-   - `Self uploaded`: uploaded by owner, no field verification bonus.
-   - `Agent assisted`: agent helped collect/upload, no verification claim.
-   - `Agent verified`: agent verified context/original document, adds evidence-quality weight.
-8. Run `Instant Evidence Check`.
-9. Confirm completeness, evidence quality, and recommended next steps are visible.
-10. If `Kirim ke analis` is enabled, click it.
-11. Confirm workflow moves to analyst queue or waiting-for-analyst state.
+2. Confirm `Daftar usaha` appears and Warung Ibu Sari is selectable.
+3. Confirm `Tambah usaha` is available for another business profile.
+4. Select Warung Ibu Sari and confirm workflow panel explains the current owner action.
+5. Click `Lanjutkan`.
+6. Confirm consent is already visible.
+7. Review profile fields and evidence list.
+8. In evidence list, confirm source badges are understandable:
+   - `Unggahan owner`: owner mengunggah sendiri, belum ada bobot verifikasi lapangan.
+   - `Dibantu agen`: agen membantu ambil/unggah bukti, tetapi belum menjadi klaim verifikasi.
+   - `Diverifikasi agen`: agen mencocokkan bukti dengan konteks usaha atau dokumen asli.
+9. Run `Instant Evidence Check`.
+10. Confirm completeness, evidence quality, and recommended next steps are visible.
+11. If `Kirim ke analis` is enabled, click it.
+12. Confirm workflow moves to analyst queue or waiting-for-analyst state.
 
 Login as `analyst@mitrascore.demo`.
 
@@ -80,8 +82,28 @@ Login as `analyst@mitrascore.demo`.
    - Verification readiness panel appears.
    - Score breakdown appears.
    - Positive signals and red flags appear.
-   - Evidence source meanings/effects are visible.
+   - Evidence source badges and agent notes are visible.
    - Audit trail includes `SUBMITTED_TO_ANALYST` and `DEEPSCORE_REVIEW_RUN`.
+
+## 2A. Multiple Business Profiles Per Owner
+
+Use this to confirm one UMKM owner can operate more than one usaha without mixing evidence or decisions.
+
+Login as `umkm@mitrascore.demo`.
+
+1. Open Owner Dashboard.
+2. Click `Tambah usaha`.
+3. Create a second business profile, for example `Catering Ibu Sari`.
+4. Give consent for the second business.
+5. Upload evidence for the second business only.
+6. Return to Owner Dashboard.
+7. Confirm both businesses appear in `Daftar usaha`.
+8. Select each business and confirm:
+   - Business name, category, workflow, evidence count, check result, and review result are shown for the selected business only.
+   - Evidence from Warung Ibu Sari does not appear under Catering Ibu Sari.
+   - A final decision on one business does not hide or block another business.
+9. Use `Bantuan agen untuk usaha baru` and confirm it creates a separate assisted draft instead of modifying the selected business.
+10. If one business is `Ditolak final pada review manusia`, confirm `Tambah usaha` is still available so the owner can start another valid business/application path.
 
 ## 3. Analyst Decision Branches
 
@@ -140,9 +162,9 @@ Analyst:
 
 1. Before selecting approval, check the verification readiness panel.
 2. If approval is blocked, confirm the panel explains what is missing:
-   - At least one verified business-presence evidence item.
+   - Minimal satu bukti keberadaan usaha yang sudah diverifikasi.
    - At least two verified cashflow or transaction evidence items.
-   - Verification notes on every `Agent verified` item.
+   - Catatan verifikasi pada setiap bukti `Diverifikasi agen`.
 3. If blocked, choose `Perlu data tambahan` and request verification by field agent.
 4. After the missing evidence is verified, set decision to `Setujui untuk proses pembiayaan`.
 5. Add note: `Disetujui untuk proses pembiayaan berikutnya setelah review manusia.`
@@ -180,10 +202,24 @@ Analyst:
 
 Expected:
 
-1. Owner sees clear rejection and reasons.
-2. Owner sees guidance to improve before future submission.
-3. Field agent sees only support actions if owner asks for help.
-4. Audit trail records the decision.
+1. Owner sees a stricter final rejection state: `Ditolak final pada review manusia`.
+2. Owner sees the reviewer reason and a clear message that this application cycle is closed.
+3. Owner cannot edit the same profile, upload more evidence, run check again, or submit the same application back to analyst.
+4. Field agent cannot change profile data, add evidence, mark evidence as verified, or resubmit this closed case.
+5. Analyst sees that the case is final and can only reopen it deliberately with `Buka ulang ke Pending` if the decision must be corrected.
+6. Audit trail records the decision.
+
+Negative test for the same declined case:
+
+1. Login as owner and click the closed case if still reachable.
+2. Confirm normal correction actions are disabled or blocked by API.
+3. Login as field agent and confirm upload, verification, check, and submit actions are disabled or blocked.
+4. Do not treat this path like `Belum direkomendasikan saat ini`.
+
+New application path after decline:
+
+1. If policy allows another attempt, start a new application cycle instead of editing the rejected one.
+2. Use materially improved evidence, updated business data, and field-agent verification before submitting again.
 
 ## 4. Needs-More-Data Response Loop
 
@@ -206,13 +242,13 @@ Login as `fieldagent@mitrascore.demo` if testing assisted response.
 3. Confirm reviewer note is visible.
 4. Upload a new evidence file.
 5. Choose source type carefully:
-   - Use `Agent assisted - dibantu agen` if the agent only helped collect/upload.
-   - Use `Agent verified - diverifikasi agen` only if the agent checked the evidence against observed business context or original documents.
-6. For `Agent verified`, add a verification note. Confirm upload is disabled if the note is missing.
-7. Confirm the evidence card explains meaning and effect.
+   - Gunakan `Dibantu agen` jika agen hanya membantu mengambil atau mengunggah bukti.
+   - Gunakan `Diverifikasi agen` hanya jika agen sudah mencocokkan bukti dengan konteks usaha yang dilihat atau dokumen asli.
+6. Untuk `Diverifikasi agen`, isi catatan verifikasi. Pastikan upload tidak bisa dilakukan jika catatan kosong.
+7. Confirm the evidence card shows a clear source badge without repeated meaning/effect text.
 8. Ensure the anti-scam approval requirements are satisfied:
-   - Verify at least one business-presence evidence, usually a business photo.
-   - Verify at least two cashflow/transaction evidences, such as receipts, invoices, supplier notes, sales notes, or QRIS records.
+   - Verifikasi minimal satu bukti keberadaan usaha, biasanya foto usaha.
+   - Verifikasi minimal dua bukti arus kas/transaksi, seperti nota, invoice, catatan pemasok, catatan penjualan, atau QRIS.
 9. Run `Check`.
 10. Click `Kirim ke Analis` when eligible.
 
@@ -243,9 +279,9 @@ Login as `fieldagent@mitrascore.demo`.
 3. Confirm visit/request information is visible.
 4. Fill or correct profile details.
 5. Save changes.
-6. Upload evidence as `Agent assisted`.
-7. Upload or mark at least one business-presence item as `Agent verified` with a verification note.
-8. Upload or mark at least two cashflow/transaction items as `Agent verified` with verification notes.
+6. Upload evidence as `Dibantu agen`.
+7. Upload atau tandai minimal satu bukti keberadaan usaha sebagai `Diverifikasi agen` dengan catatan verifikasi.
+8. Upload atau tandai minimal dua bukti arus kas/transaksi sebagai `Diverifikasi agen` dengan catatan verifikasi.
 9. Run `Check`.
 10. Click `Kirim ke Analis` when eligible.
 
@@ -277,15 +313,15 @@ Test these with `umkm2@mitrascore.demo` or a freshly reset case.
 
 Use the Field Agent Dashboard.
 
-1. Upload evidence as `Agent assisted`.
+1. Upload evidence as `Dibantu agen`.
    Expected: card says agent helped collect/upload; no verification bonus.
-2. Try changing an item to `Agent verified` without a note.
+2. Try changing an item to `Diverifikasi agen` without a note.
    Expected: system asks for a verification note.
 3. Add note such as:
    `Nota asli dilihat saat kunjungan dan cocok dengan stok barang di warung.`
 4. Mark as verified.
-   Expected: card says verified; effect says it adds evidence-quality points.
-5. Verify at least one business-presence evidence and two cashflow/transaction evidences.
+   Expected: card says the item is verified and the verification readiness panel updates.
+5. Verifikasi minimal satu bukti keberadaan usaha dan dua bukti arus kas/transaksi.
    Expected: verification readiness panel becomes approval-ready.
 6. Run Instant Evidence Check.
    Expected: evidence quality can improve because verified evidence adds weight.
@@ -299,8 +335,8 @@ Use Analyst Dashboard after DeepScore exists.
 1. Try selecting `Setujui untuk proses pembiayaan` before key evidence is verified.
    Expected: save is blocked and the verification readiness panel explains what is missing.
 2. Login as field agent.
-3. Mark one business-presence evidence as `Agent verified` with a clear note.
-4. Mark two cashflow/transaction evidences as `Agent verified` with clear notes.
+3. Tandai satu bukti keberadaan usaha sebagai `Diverifikasi agen` dengan catatan yang jelas.
+4. Tandai dua bukti arus kas/transaksi sebagai `Diverifikasi agen` dengan catatan yang jelas.
 5. Run `Check` and submit back to analyst.
 6. Login as analyst and rerun `DeepScore`.
 7. Confirm verification readiness is approval-ready.

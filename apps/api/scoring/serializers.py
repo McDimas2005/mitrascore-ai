@@ -9,7 +9,7 @@ HUMAN_DECISION_LABELS = {
     HumanDecision.RECOMMENDED_FOR_REVIEW: "Direkomendasikan untuk review lanjutan",
     HumanDecision.NOT_RECOMMENDED_AT_THIS_STAGE: "Belum direkomendasikan pada tahap ini",
     HumanDecision.APPROVED_FOR_FINANCING: "Disetujui untuk proses pembiayaan",
-    HumanDecision.DECLINED: "Ditolak pada review manusia",
+    HumanDecision.DECLINED: "Ditolak final pada review manusia",
 }
 
 HUMAN_DECISION_FOLLOW_UP_ACTIONS = {
@@ -42,9 +42,10 @@ HUMAN_DECISION_FOLLOW_UP_ACTIONS = {
         "Simpan catatan review dan bukti usaha untuk proses administrasi lanjutan.",
     ],
     HumanDecision.DECLINED: [
-        "Baca catatan reviewer untuk memahami alasan penolakan.",
-        "Perbaiki bukti arus kas, konsistensi transaksi, atau risiko yang disebutkan reviewer.",
-        "Ajukan kembali hanya setelah data usaha lebih lengkap dan kuat.",
+        "Baca catatan reviewer untuk memahami alasan penolakan final pada siklus ini.",
+        "Pengajuan ini tidak dapat diedit, ditambah bukti, atau dikirim ulang dari siklus yang sama.",
+        "Ajukan pengajuan baru hanya jika kebijakan lembaga mengizinkan dan data usaha sudah berubah secara material.",
+        "Gunakan kanal klarifikasi resmi bila menurut owner ada kekeliruan keputusan.",
     ],
 }
 

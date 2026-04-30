@@ -40,6 +40,9 @@ export default function OnboardingPage() {
     load();
   }, []);
 
+  const latestDecision = profile?.latest_review?.final_human_decision;
+  const isFinalLocked = ["DECLINED", "APPROVED_FOR_FINANCING"].includes(latestDecision ?? "");
+
   function profilePayload() {
     return {
       ...emptyProfile,
@@ -205,6 +208,12 @@ export default function OnboardingPage() {
                 <WorkflowPanel profile={profile} role="UMKM_OWNER" />
               </div>
             )}
+            {isFinalLocked && (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                <p className="font-semibold">Pengajuan ini sudah ditutup</p>
+                <p className="mt-1">Profil, bukti, check ulang, dan kirim ulang tidak tersedia untuk siklus review yang sudah final.</p>
+              </div>
+            )}
           </Panel>
           <Panel title="2. Persetujuan data">
             <p className="text-sm text-black/65">Persetujuan wajib sebelum unggah bukti dan scoring. AI hanya membantu analisis, bukan keputusan pembiayaan.</p>
@@ -224,30 +233,30 @@ export default function OnboardingPage() {
           </Panel>
           <Panel title="3. Profil usaha">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Input label="Nama usaha" value={form.business_name} onChange={(v) => setForm({ ...form, business_name: v })} />
-              <Input label="Kategori" value={form.business_category} onChange={(v) => setForm({ ...form, business_category: v })} />
-              <Input label="Lama usaha bulan" type="number" value={form.business_duration_months} onChange={(v) => setForm({ ...form, business_duration_months: Number(v) })} />
-              <Input label="Jumlah diajukan" value={form.requested_amount} onChange={(v) => setForm({ ...form, requested_amount: v })} />
-              <Input label="Estimasi omzet bulanan" value={form.estimated_monthly_revenue} onChange={(v) => setForm({ ...form, estimated_monthly_revenue: v })} />
-              <Input label="Estimasi biaya bulanan" value={form.estimated_monthly_expense} onChange={(v) => setForm({ ...form, estimated_monthly_expense: v })} />
+              <Input disabled={isFinalLocked} label="Nama usaha" value={form.business_name} onChange={(v) => setForm({ ...form, business_name: v })} />
+              <Input disabled={isFinalLocked} label="Kategori" value={form.business_category} onChange={(v) => setForm({ ...form, business_category: v })} />
+              <Input disabled={isFinalLocked} label="Lama usaha bulan" type="number" value={form.business_duration_months} onChange={(v) => setForm({ ...form, business_duration_months: Number(v) })} />
+              <Input disabled={isFinalLocked} label="Jumlah diajukan" value={form.requested_amount} onChange={(v) => setForm({ ...form, requested_amount: v })} />
+              <Input disabled={isFinalLocked} label="Estimasi omzet bulanan" value={form.estimated_monthly_revenue} onChange={(v) => setForm({ ...form, estimated_monthly_revenue: v })} />
+              <Input disabled={isFinalLocked} label="Estimasi biaya bulanan" value={form.estimated_monthly_expense} onChange={(v) => setForm({ ...form, estimated_monthly_expense: v })} />
             </div>
-            <TextArea label="Tujuan pembiayaan" value={form.financing_purpose} onChange={(v) => setForm({ ...form, financing_purpose: v })} />
-            <TextArea label="Catatan arus kas sederhana" value={form.simple_cashflow_note} onChange={(v) => setForm({ ...form, simple_cashflow_note: v })} />
-            <TextArea label="Catatan usaha" value={form.business_note} onChange={(v) => setForm({ ...form, business_note: v })} />
+            <TextArea disabled={isFinalLocked} label="Tujuan pembiayaan" value={form.financing_purpose} onChange={(v) => setForm({ ...form, financing_purpose: v })} />
+            <TextArea disabled={isFinalLocked} label="Catatan arus kas sederhana" value={form.simple_cashflow_note} onChange={(v) => setForm({ ...form, simple_cashflow_note: v })} />
+            <TextArea disabled={isFinalLocked} label="Catatan usaha" value={form.business_note} onChange={(v) => setForm({ ...form, business_note: v })} />
             <div className="mt-3 flex flex-wrap gap-2">
-              <button disabled={busy} onClick={saveProfile} className="focus-ring rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Simpan profil</button>
-              <button disabled={!profile || busy} onClick={deleteProfile} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
+              <button disabled={busy || isFinalLocked} onClick={saveProfile} className="focus-ring rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Simpan profil</button>
+              <button disabled={!profile || busy || isFinalLocked} onClick={deleteProfile} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
                 <Trash2 size={16} /> Hapus Profil
               </button>
             </div>
           </Panel>
           <Panel title="4. Unggah bukti usaha">
             <div className="grid gap-3 sm:grid-cols-[180px_1fr_auto]">
-              <select className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm" value={evidenceType} onChange={(event) => setEvidenceType(event.target.value)}>
+              <select disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" value={evidenceType} onChange={(event) => setEvidenceType(event.target.value)}>
                 {["BUSINESS_PHOTO", "RECEIPT", "INVOICE", "SUPPLIER_NOTE", "SALES_NOTE", "QRIS_SCREENSHOT", "OTHER"].map((type) => <option key={type}>{type}</option>)}
               </select>
-              <input className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-              <button disabled={!profile?.consent?.consent_given || !file || busy} onClick={uploadEvidence} className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <input disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+              <button disabled={!profile?.consent?.consent_given || !file || busy || isFinalLocked} onClick={uploadEvidence} className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                 <Upload size={16} /> Unggah
               </button>
             </div>
@@ -262,7 +271,7 @@ export default function OnboardingPage() {
                       <span>{item.ai_status}</span>
                     </div>
                   </div>
-                  <button disabled={busy} onClick={() => deleteEvidence(item.id)} className="focus-ring inline-flex items-center justify-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
+                  <button disabled={busy || isFinalLocked} onClick={() => deleteEvidence(item.id)} className="focus-ring inline-flex items-center justify-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
                     <Trash2 size={16} /> Hapus
                   </button>
                 </div>
@@ -270,10 +279,10 @@ export default function OnboardingPage() {
             </div>
           </Panel>
           <Panel title="5. Instant Evidence Check">
-            <button disabled={!profile?.consent?.consent_given || busy} onClick={runCheck} className="focus-ring rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Jalankan check</button>
+            <button disabled={!profile?.consent?.consent_given || busy || isFinalLocked} onClick={runCheck} className="focus-ring rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Jalankan check</button>
             {profile?.latest_instant_check && <CheckResult check={profile.latest_instant_check} />}
             <div className="mt-3 flex flex-wrap gap-2">
-              <button disabled={!profile?.latest_instant_check?.can_submit_to_analyst || busy} onClick={submitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md bg-saffron px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <button disabled={!profile?.latest_instant_check?.can_submit_to_analyst || busy || isFinalLocked} onClick={submitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md bg-saffron px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                 <Send size={16} /> Kirim ke analis
               </button>
               <button disabled={!profile || !["READY_FOR_ANALYST", "UNDER_REVIEW"].includes(profile.status) || busy} onClick={undoSubmitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
@@ -292,12 +301,12 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   return <section className="rounded-md border border-black/10 bg-white p-4"><h2 className="mb-3 font-semibold">{title}</h2>{children}</section>;
 }
 
-function Input({ label, value, onChange, type = "text" }: { label: string; value: unknown; onChange: (value: string) => void; type?: string }) {
-  return <label className="text-sm font-medium">{label}<input type={type} className="focus-ring mt-1 w-full rounded-md border border-black/15 px-3 py-2" value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} /></label>;
+function Input({ label, value, onChange, type = "text", disabled = false }: { label: string; value: unknown; onChange: (value: string) => void; type?: string; disabled?: boolean }) {
+  return <label className="text-sm font-medium">{label}<input disabled={disabled} type={type} className="focus-ring mt-1 w-full rounded-md border border-black/15 px-3 py-2 disabled:opacity-50" value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
-function TextArea({ label, value, onChange }: { label: string; value: unknown; onChange: (value: string) => void }) {
-  return <label className="mt-3 block text-sm font-medium">{label}<textarea className="focus-ring mt-1 min-h-20 w-full rounded-md border border-black/15 px-3 py-2" value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} /></label>;
+function TextArea({ label, value, onChange, disabled = false }: { label: string; value: unknown; onChange: (value: string) => void; disabled?: boolean }) {
+  return <label className="mt-3 block text-sm font-medium">{label}<textarea disabled={disabled} className="focus-ring mt-1 min-h-20 w-full rounded-md border border-black/15 px-3 py-2 disabled:opacity-50" value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function CheckResult({ check }: { check: InstantCheck }) {

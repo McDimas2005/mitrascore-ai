@@ -3,6 +3,17 @@ from scoring.models import HumanDecision
 from .models import BorrowerStatus
 
 
+RECOVERABLE_REVIEW_DECISIONS = {
+    HumanDecision.NEEDS_MORE_DATA,
+    HumanDecision.NOT_RECOMMENDED_AT_THIS_STAGE,
+}
+
+FINAL_LOCKED_DECISIONS = {
+    HumanDecision.APPROVED_FOR_FINANCING,
+    HumanDecision.DECLINED,
+}
+
+
 STATUS_LABELS = {
     BorrowerStatus.DRAFT: "Draft profil usaha",
     BorrowerStatus.CONSENTED: "Persetujuan data tersimpan",
@@ -16,6 +27,15 @@ STATUS_LABELS = {
 
 def latest_review(profile):
     return profile.reviews.first()
+
+
+def latest_decision(profile):
+    review = latest_review(profile)
+    return review.final_human_decision if review else None
+
+
+def is_final_locked(profile):
+    return latest_decision(profile) in FINAL_LOCKED_DECISIONS
 
 
 def workflow_stage(profile):
@@ -87,7 +107,7 @@ def workflow_stage(profile):
         return {
             "code": "DECLINED",
             "label": "Ditolak pada review manusia",
-            "summary": "Analis memberi keputusan manusia negatif. UMKM dapat memperbaiki data sebelum pengajuan ulang di masa depan.",
+            "summary": "Pengajuan ini sudah ditutup untuk siklus review saat ini. Perubahan normal, unggah bukti, dan kirim ulang tidak tersedia kecuali analis atau admin membuka ulang kasus.",
         }
     return {
         "code": "NOT_READY",
@@ -143,9 +163,19 @@ def role_next_actions(profile):
         actions["FIELD_AGENT"] = ["Tidak ada aksi lapangan kecuali diminta untuk verifikasi akhir."]
         actions["ANALYST"] = ["Pastikan keputusan, catatan, dan audit trail sudah lengkap."]
     elif stage == "DECLINED":
-        actions["UMKM_OWNER"] = ["Baca alasan penolakan.", "Perbaiki bukti arus kas dan data usaha sebelum pengajuan ulang."]
-        actions["FIELD_AGENT"] = ["Bantu owner memahami perbaikan data bila diminta."]
-        actions["ANALYST"] = ["Tidak ada aksi lanjutan kecuali ada pengajuan ulang."]
+        actions["UMKM_OWNER"] = [
+            "Baca alasan penolakan dan simpan catatan review.",
+            "Pengajuan ini tidak dapat diedit atau dikirim ulang dari siklus yang sama.",
+            "Jika ingin mencoba lagi, mulai pengajuan baru atau minta klarifikasi resmi sesuai kebijakan lembaga.",
+        ]
+        actions["FIELD_AGENT"] = [
+            "Jelaskan alasan penolakan tanpa mengubah bukti pada kasus yang sudah ditutup.",
+            "Bantu owner menyiapkan pengajuan baru hanya bila kebijakan lembaga mengizinkan.",
+        ]
+        actions["ANALYST"] = [
+            "Tidak ada aksi lanjutan pada kasus tertutup.",
+            "Gunakan undo ke pending hanya jika keputusan perlu dikoreksi atau kasus resmi dibuka ulang.",
+        ]
     else:
         actions["UMKM_OWNER"] = ["Baca catatan analis.", "Perbaiki red flags dan bukti usaha.", "Ajukan kembali setelah data lebih kuat."]
         actions["FIELD_AGENT"] = ["Bantu owner memperkuat bukti dan observasi lapangan."]

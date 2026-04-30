@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, FileText, RefreshCw, Save, Send, Trash2, Upload, Wand2 } from "lucide-react";
 import { apiFetch, emptyProfile } from "@/lib/api";
 import type { BorrowerProfile, EvidenceItem } from "@/types/api";
-import { EvidenceSourceBadge, EvidenceSourceDetails } from "@/components/EvidenceSourceBadge";
+import { EvidenceSourceBadge } from "@/components/EvidenceSourceBadge";
 import { ErrorMessage, Loading } from "@/components/State";
 import { Shell } from "@/components/Shell";
 import { VerificationReadinessPanel } from "@/components/VerificationReadinessPanel";
@@ -175,6 +175,9 @@ export default function FieldAgentPage() {
     }
   }
 
+  const selectedDecision = selected?.latest_review?.final_human_decision;
+  const isFinalLocked = ["DECLINED", "APPROVED_FOR_FINANCING"].includes(selectedDecision ?? "");
+
   return (
     <Shell title="Dashboard Field Agent">
       {loading && <Loading />}
@@ -207,13 +210,13 @@ export default function FieldAgentPage() {
                   <p className="mt-1 text-sm text-black/60">{selected.business_category || "Kategori belum diisi"} | {selected.status_label ?? selected.status}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button disabled={busy} onClick={runInstantCheck} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
+                  <button disabled={busy || isFinalLocked} onClick={runInstantCheck} className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 px-3 py-2 text-sm font-medium disabled:opacity-50">
                     <RefreshCw size={16} /> Check
                   </button>
-                  <button disabled={!selected.latest_instant_check?.can_submit_to_analyst || busy} onClick={submitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md bg-saffron px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  <button disabled={!selected.latest_instant_check?.can_submit_to_analyst || busy || isFinalLocked} onClick={submitAnalyst} className="focus-ring inline-flex items-center gap-2 rounded-md bg-saffron px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                     <Send size={16} /> Kirim ke Analis
                   </button>
-                  <button disabled={busy} onClick={deleteSelectedProfile} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
+                  <button disabled={busy || isFinalLocked} onClick={deleteSelectedProfile} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">
                     <Trash2 size={16} /> Hapus
                   </button>
                 </div>
@@ -221,6 +224,12 @@ export default function FieldAgentPage() {
               <div className="mt-4">
                 <WorkflowPanel profile={selected} role="FIELD_AGENT" />
               </div>
+              {isFinalLocked && (
+                <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                  <p className="font-semibold">Kasus sudah final</p>
+                  <p className="mt-1">Field agent tidak dapat mengubah profil, menambah bukti, memverifikasi bukti, atau mengirim ulang kasus ini dari siklus yang sama.</p>
+                </div>
+              )}
               <div className="mt-4">
                 <VerificationReadinessPanel profile={selected} />
               </div>
@@ -228,15 +237,15 @@ export default function FieldAgentPage() {
                 <p className="font-semibold">Makna status bukti</p>
                 <div className="mt-2 grid gap-2 md:grid-cols-3">
                   <SourceDefinition
-                    title="Self uploaded"
+                    title="Unggahan owner"
                     text="Owner mengunggah bukti sendiri. Bukti dipakai untuk kelengkapan dan OCR, tanpa klaim verifikasi lapangan."
                   />
                   <SourceDefinition
-                    title="Agent assisted"
+                    title="Dibantu agen"
                     text="Agen membantu mengambil atau mengunggah bukti. Ini mencatat pendampingan, tetapi belum berarti agen memverifikasi keaslian atau konteks bukti."
                   />
                   <SourceDefinition
-                    title="Agent verified"
+                    title="Diverifikasi agen"
                     text="Agen sudah mencocokkan bukti dengan observasi usaha atau dokumen asli. Status ini menambah +4 poin kualitas bukti per item sebelum batas skor dan wajib punya catatan verifikasi."
                   />
                 </div>
@@ -262,31 +271,31 @@ export default function FieldAgentPage() {
                 </div>
               )}
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <input className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm" value={selected.business_name ?? ""} onChange={(event) => setSelected({ ...selected, business_name: event.target.value })} />
-                <input className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm" placeholder="Kategori usaha" value={selected.business_category ?? ""} onChange={(event) => setSelected({ ...selected, business_category: event.target.value })} />
-                <textarea className="focus-ring min-h-20 rounded-md border border-black/15 px-3 py-2 text-sm sm:col-span-2" placeholder="Tujuan pembiayaan" value={selected.financing_purpose ?? ""} onChange={(event) => setSelected({ ...selected, financing_purpose: event.target.value })} />
-                <textarea className="focus-ring min-h-20 rounded-md border border-black/15 px-3 py-2 text-sm sm:col-span-2" placeholder="Catatan usaha / observasi" value={selected.business_note ?? ""} onChange={(event) => setSelected({ ...selected, business_note: event.target.value })} />
+                <input disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" value={selected.business_name ?? ""} onChange={(event) => setSelected({ ...selected, business_name: event.target.value })} />
+                <input disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" placeholder="Kategori usaha" value={selected.business_category ?? ""} onChange={(event) => setSelected({ ...selected, business_category: event.target.value })} />
+                <textarea disabled={isFinalLocked} className="focus-ring min-h-20 rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50 sm:col-span-2" placeholder="Tujuan pembiayaan" value={selected.financing_purpose ?? ""} onChange={(event) => setSelected({ ...selected, financing_purpose: event.target.value })} />
+                <textarea disabled={isFinalLocked} className="focus-ring min-h-20 rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50 sm:col-span-2" placeholder="Catatan usaha / observasi" value={selected.business_note ?? ""} onChange={(event) => setSelected({ ...selected, business_note: event.target.value })} />
               </div>
-              <button disabled={busy} onClick={saveSelectedProfile} className="focus-ring mt-3 inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <button disabled={busy || isFinalLocked} onClick={saveSelectedProfile} className="focus-ring mt-3 inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                 <Save size={16} /> Simpan Perubahan
               </button>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <select className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm" value={evidenceType} onChange={(event) => setEvidenceType(event.target.value)}>
+                <select disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" value={evidenceType} onChange={(event) => setEvidenceType(event.target.value)}>
                   {["BUSINESS_PHOTO", "RECEIPT", "INVOICE", "SUPPLIER_NOTE", "SALES_NOTE", "QRIS_SCREENSHOT", "OTHER"].map((type) => <option key={type}>{type}</option>)}
                 </select>
-                <select className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm" value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
-                  <option value="AGENT_ASSISTED">Agent assisted - dibantu agen</option>
-                  <option value="AGENT_VERIFIED">Agent verified - diverifikasi agen</option>
-                  <option value="SELF_UPLOADED">Self uploaded - unggahan owner</option>
+                <select disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50" value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                  <option value="AGENT_ASSISTED">Dibantu agen</option>
+                  <option value="AGENT_VERIFIED">Diverifikasi agen</option>
+                  <option value="SELF_UPLOADED">Unggahan owner</option>
                 </select>
-                <input className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm sm:col-span-2" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-                <textarea className="focus-ring min-h-24 rounded-md border border-black/15 px-3 py-2 text-sm sm:col-span-2" placeholder="Catatan observasi agen" value={note} onChange={(event) => setNote(event.target.value)} />
+                <input disabled={isFinalLocked} className="focus-ring rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50 sm:col-span-2" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+                <textarea disabled={isFinalLocked} className="focus-ring min-h-24 rounded-md border border-black/15 px-3 py-2 text-sm disabled:opacity-50 sm:col-span-2" placeholder="Catatan observasi agen" value={note} onChange={(event) => setNote(event.target.value)} />
               </div>
-              <button disabled={!file || busy || (sourceType === "AGENT_VERIFIED" && !note.trim())} onClick={upload} className="focus-ring mt-3 inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <button disabled={!file || busy || isFinalLocked || (sourceType === "AGENT_VERIFIED" && !note.trim())} onClick={upload} className="focus-ring mt-3 inline-flex items-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                 <Upload size={16} /> Unggah dan proses
               </button>
               {sourceType === "AGENT_VERIFIED" && !note.trim() && (
-                <p className="mt-2 text-sm text-saffron">Catatan verifikasi wajib untuk bukti agent verified.</p>
+                <p className="mt-2 text-sm text-saffron">Catatan verifikasi wajib untuk bukti yang diverifikasi agen.</p>
               )}
               <div className="mt-5 space-y-2">
                 {(selected.evidence_items ?? []).map((item) => (
@@ -299,12 +308,12 @@ export default function FieldAgentPage() {
                           <EvidenceSourceBadge item={item} />
                           <span>{item.ai_status}</span>
                         </div>
-                        <EvidenceSourceDetails item={item} />
+                        {item.field_agent_note && <p className="mt-2 text-xs text-black/60">Catatan agen: {item.field_agent_note}</p>}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <button disabled={busy || item.source_type === "AGENT_ASSISTED"} onClick={() => updateEvidenceSource(item, "AGENT_ASSISTED")} title="Mark as agent assisted: agent helped collect/upload, but has not verified source context." className="focus-ring rounded-md border border-black/15 px-3 py-2 disabled:opacity-50">Mark assisted</button>
-                        <button disabled={busy || item.source_type === "AGENT_VERIFIED"} onClick={() => updateEvidenceSource(item, "AGENT_VERIFIED")} title="Mark as agent verified: requires verification note and increases evidence quality." className="focus-ring rounded-md border border-mint px-3 py-2 text-mint disabled:opacity-50">Mark verified</button>
-                        <button disabled={busy} onClick={() => deleteEvidence(item.id)} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-red-700 disabled:opacity-50">
+                        <button disabled={busy || isFinalLocked || item.source_type === "AGENT_ASSISTED"} onClick={() => updateEvidenceSource(item, "AGENT_ASSISTED")} title="Tandai dibantu agen: agen membantu ambil/unggah, tetapi belum memverifikasi konteks sumber." className="focus-ring rounded-md border border-black/15 px-3 py-2 disabled:opacity-50">Tandai dibantu</button>
+                        <button disabled={busy || isFinalLocked || item.source_type === "AGENT_VERIFIED"} onClick={() => updateEvidenceSource(item, "AGENT_VERIFIED")} title="Tandai diverifikasi agen: wajib catatan verifikasi dan memperkuat kualitas bukti." className="focus-ring rounded-md border border-mint px-3 py-2 text-mint disabled:opacity-50">Tandai verified</button>
+                        <button disabled={busy || isFinalLocked} onClick={() => deleteEvidence(item.id)} className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-red-700 disabled:opacity-50">
                           <Trash2 size={15} /> Hapus
                         </button>
                       </div>

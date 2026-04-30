@@ -5,19 +5,19 @@ from .models import AIExtractionResult, EvidenceItem, SourceType
 
 SOURCE_TYPE_DETAILS = {
     SourceType.SELF_UPLOADED: {
-        "label": "Self uploaded",
-        "summary": "Owner uploaded this evidence without field-agent handling.",
-        "effect": "Counts as owner-provided evidence. It supports completeness and OCR extraction, but receives no field verification bonus.",
+        "label": "Unggahan owner",
+        "summary": "Owner mengunggah bukti ini sendiri tanpa bantuan field agent.",
+        "effect": "Dipakai untuk kelengkapan data dan OCR, tetapi belum mendapat bobot verifikasi lapangan.",
     },
     SourceType.AGENT_ASSISTED: {
-        "label": "Agent assisted",
-        "summary": "Field agent helped capture or upload the evidence for the owner.",
-        "effect": "Shows assisted collection and improves audit context, but it is not a verification claim and receives no verification bonus.",
+        "label": "Dibantu agen",
+        "summary": "Field agent membantu mengambil atau mengunggah bukti untuk owner.",
+        "effect": "Mencatat pendampingan dan konteks audit, tetapi belum berarti bukti sudah diverifikasi.",
     },
     SourceType.AGENT_VERIFIED: {
-        "label": "Agent verified",
-        "summary": "Field agent reviewed the evidence against observed business context or original documents.",
-        "effect": "Adds +4 evidence-quality points per verified item before the quality cap, which can improve Instant Evidence Check and DeepScore.",
+        "label": "Diverifikasi agen",
+        "summary": "Field agent mencocokkan bukti dengan konteks usaha yang dilihat atau dokumen asli.",
+        "effect": "Menambah +4 poin kualitas bukti per item sebelum batas skor, dan dapat memperkuat Instant Evidence Check serta DeepScore.",
     },
 }
 
@@ -86,12 +86,12 @@ class EvidenceUploadSerializer(serializers.ModelSerializer):
     def validate_source_type(self, value):
         user = self.context["request"].user
         if value in {SourceType.AGENT_ASSISTED, SourceType.AGENT_VERIFIED} and user.role != "FIELD_AGENT":
-            raise serializers.ValidationError("Only field agents can use agent evidence source types.")
+            raise serializers.ValidationError("Hanya field agent yang dapat memakai status bukti berbasis agen.")
         return value
 
     def validate(self, attrs):
         if attrs.get("source_type") == SourceType.AGENT_VERIFIED and not attrs.get("field_agent_note", "").strip():
-            raise serializers.ValidationError({"field_agent_note": "Verification note is required for agent-verified evidence."})
+            raise serializers.ValidationError({"field_agent_note": "Catatan verifikasi wajib untuk bukti yang diverifikasi agen."})
         return attrs
 
 
@@ -103,12 +103,12 @@ class EvidenceSourceTypeSerializer(serializers.ModelSerializer):
     def validate_source_type(self, value):
         user = self.context["request"].user
         if user.role != "FIELD_AGENT":
-            raise serializers.ValidationError("Only field agents can change evidence source type.")
+            raise serializers.ValidationError("Hanya field agent yang dapat mengubah status sumber bukti.")
         return value
 
     def validate(self, attrs):
         source_type = attrs.get("source_type", self.instance.source_type if self.instance else None)
         note = attrs.get("field_agent_note", self.instance.field_agent_note if self.instance else "")
         if source_type == SourceType.AGENT_VERIFIED and not note.strip():
-            raise serializers.ValidationError({"field_agent_note": "Verification note is required for agent-verified evidence."})
+            raise serializers.ValidationError({"field_agent_note": "Catatan verifikasi wajib untuk bukti yang diverifikasi agen."})
         return attrs
