@@ -117,7 +117,7 @@ USE_MOCK_AI=true
 
 Restart the Azure App Service and rerun evidence processing. The local MVP remains stable without Azure credentials.
 
-If Blob upload fails on Azure App Service, confirm `USE_AZURE_BLOB_STORAGE=true`, `AZURE_STORAGE_CONNECTION_STRING`, and `AZURE_STORAGE_CONTAINER_NAME`. Keep Blob enabled for deployed demos because App Service Free F1 local storage is limited.
+If Blob upload fails on Azure App Service, confirm `USE_AZURE_BLOB_STORAGE=true`, `AZURE_STORAGE_CONNECTION_STRING`, and `AZURE_STORAGE_CONTAINER_NAME`. Keep Blob enabled for deployed demos because App Service local storage is not the production evidence store.
 
 ## QA Checks
 
