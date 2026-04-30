@@ -12,7 +12,7 @@ from borrowers.permissions import can_access_profile
 from borrowers.workflow import is_final_locked
 from scoring.services import require_consent
 
-from .models import EvidenceItem
+from .models import EvidenceItem, SourceType, StorageBackend
 from .serializers import EvidenceItemSerializer, EvidenceSourceTypeSerializer, EvidenceUploadSerializer
 from .storage import sanitize_upload_filename, store_uploaded_evidence
 
@@ -49,15 +49,25 @@ class EvidenceListCreateView(APIView):
         upload = serializer.validated_data["file"]
         safe_filename = sanitize_upload_filename(getattr(upload, "name", "uploaded-evidence"))
         storage_backend, storage_reference = store_uploaded_evidence(upload, profile, request.user)
-        item = serializer.save(
-            borrower_profile=profile,
-            uploaded_by=request.user,
-            original_filename=safe_filename,
-            mime_type=getattr(upload, "content_type", ""),
-            file_size=getattr(upload, "size", 0) or 0,
-            storage_backend=storage_backend,
-            storage_reference=storage_reference,
-        )
+        item_kwargs = {
+            "borrower_profile": profile,
+            "uploaded_by": request.user,
+            "original_filename": safe_filename,
+            "mime_type": getattr(upload, "content_type", ""),
+            "file_size": getattr(upload, "size", 0) or 0,
+            "storage_backend": storage_backend,
+            "storage_reference": storage_reference,
+        }
+        if storage_backend == StorageBackend.AZURE_BLOB:
+            item = EvidenceItem.objects.create(
+                evidence_type=serializer.validated_data["evidence_type"],
+                source_type=serializer.validated_data.get("source_type", SourceType.SELF_UPLOADED),
+                field_agent_note=serializer.validated_data.get("field_agent_note", ""),
+                file="",
+                **item_kwargs,
+            )
+        else:
+            item = serializer.save(**item_kwargs)
         if profile.status in {BorrowerStatus.CONSENTED, BorrowerStatus.DRAFT}:
             profile.status = BorrowerStatus.EVIDENCE_UPLOADED
             profile.save(update_fields=["status", "updated_at"])

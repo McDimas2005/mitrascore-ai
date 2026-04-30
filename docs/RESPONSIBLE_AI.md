@@ -2,6 +2,8 @@
 
 MitraScore AI is built around human-in-the-loop credit readiness, not automated lending decisions.
 
+The deployed demo should use only synthetic or consented demo evidence. Azure Blob Storage, Azure AI Vision, Azure Document Intelligence, Neon, Azure App Service, and Vercel do not change the core Responsible AI boundary: AI remains decision-support and every final financing decision requires human review.
+
 ## Consent-First Design
 
 - Consent must be recorded before evidence upload, OCR, photo analysis, Instant Evidence Check, or DeepScore.

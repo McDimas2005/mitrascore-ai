@@ -25,7 +25,7 @@ python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py seed_demo
+python manage.py seed_demo_data
 USE_MOCK_AI=true USE_AZURE_BLOB_STORAGE=false python manage.py runserver 0.0.0.0:8000
 ```
 
@@ -37,7 +37,7 @@ npm install
 npm run dev
 ```
 
-Open the Next.js URL printed by `npm run dev`. The frontend calls `http://127.0.0.1:8000/api` unless `NEXT_PUBLIC_API_BASE_URL` is set.
+Open the Next.js URL printed by `npm run dev`. The frontend calls `http://127.0.0.1:8000/api` unless `NEXT_PUBLIC_API_URL` is set.
 
 ## Demo Users
 
@@ -93,15 +93,18 @@ AZURE_STORAGE_CONTAINER_NAME=<private-container-name>
 ```
 
 If Blob env vars are missing or upload fails, the app falls back to local file storage and audit logs the fallback. Public blob URLs are not generated.
+When Blob upload succeeds, deployed evidence is referenced by private blob name instead of relying on persistent App Service local media files.
 
 ## Environment Variables
 
 - `DATABASE_URL`: PostgreSQL connection string. Omit for local SQLite.
-- `DJANGO_SECRET_KEY`: required secret for production.
-- `DJANGO_DEBUG`: use `1` locally, `0` in production.
-- `DJANGO_ALLOWED_HOSTS`: comma-separated API hosts.
+- `SECRET_KEY` or `DJANGO_SECRET_KEY`: required secret for production.
+- `DEBUG` or `DJANGO_DEBUG`: use `true`/`1` locally, `false`/`0` in production.
+- `ALLOWED_HOSTS` or `DJANGO_ALLOWED_HOSTS`: comma-separated API hosts.
+- `CSRF_TRUSTED_ORIGINS`: Vercel and Azure HTTPS origins.
 - `CORS_ALLOWED_ORIGINS`: comma-separated frontend origins.
 - `CORS_ALLOWED_ORIGIN_REGEXES`: local dev regex origins.
+- `DATABASE_SSL_REQUIRE`: set `true` for Neon if the URL does not already include `sslmode=require`.
 - `DJANGO_SECURE_SSL_REDIRECT`, `DJANGO_SESSION_COOKIE_SECURE`, `DJANGO_CSRF_COOKIE_SECURE`, `DJANGO_SECURE_HSTS_SECONDS`, `DJANGO_SECURE_HSTS_PRELOAD`: production HTTPS hardening controls.
 - `USE_MOCK_AI`: `true` by default.
 - `AZURE_AI_VISION_ENDPOINT`, `AZURE_AI_VISION_KEY`: Azure AI services Vision credentials.
@@ -111,7 +114,7 @@ If Blob env vars are missing or upload fails, the app falls back to local file s
 - `MAX_EVIDENCE_UPLOAD_BYTES`: default `8388608`.
 - `ALLOWED_EVIDENCE_EXTENSIONS`: default `jpg,jpeg,png,pdf,txt`.
 - `ALLOWED_EVIDENCE_MIME_TYPES`: safe demo MIME allow-list.
-- `NEXT_PUBLIC_API_BASE_URL`: frontend API URL.
+- `NEXT_PUBLIC_API_URL`: frontend API origin, for example `https://<app-name>.azurewebsites.net`.
 - `AZURE_LANGUAGE_*`, `AZURE_OPENAI_*`, `AZURE_SEARCH_*`: placeholders for future optional extensions only.
 
 ## Tests
@@ -136,20 +139,24 @@ By default this deletes local uploaded media under `apps/api/media`. Use `--keep
 
 ## Deployment
 
-Recommended safe hackathon setup:
+Recommended deployment:
 
-- Frontend: Vercel or Azure Static Web Apps.
-- Backend: Azure App Service only if remote API is needed.
-- Database: local Postgres for demo, or Supabase/Neon for hosted demo.
-- Evidence files: local by default; Azure Blob private container when configured.
+- Frontend: Vercel.
+- Backend: Azure App Service Free F1, Linux, Python runtime.
+- Database: Neon PostgreSQL using `DATABASE_URL`.
+- Evidence files: Azure Blob private container.
 - Emergency fallback: set `USE_MOCK_AI=true`.
+
+Full step-by-step instructions are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Backend production notes:
 
-- Set `DJANGO_DEBUG=0`.
-- Set a strong `DJANGO_SECRET_KEY`.
-- Set `DJANGO_ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` to real deployed domains.
+- Set `DEBUG=false`.
+- Set a strong `SECRET_KEY`.
+- Set `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` to real deployed domains.
 - Keep Azure keys in platform secrets, not in git.
+- Azure startup command: `gunicorn config.wsgi:application --bind=0.0.0.0:8000 --timeout 600`.
+- First deployment commands: `python manage.py migrate`, `python manage.py collectstatic --noinput`, and `python manage.py seed_demo_data`.
 
 Draft CI workflow is in `.github/workflows/ci.yml`.
 
@@ -159,7 +166,7 @@ Draft CI workflow is in `.github/workflows/ci.yml`.
 - Demo must continue during Azure outage: set `USE_MOCK_AI=true` and rerun processing.
 - Blob upload falls back to local: confirm `USE_AZURE_BLOB_STORAGE=true`, connection string, container name, SDK dependency, and private container permissions.
 - CORS errors: add the frontend origin to `CORS_ALLOWED_ORIGINS`.
-- Production debug warning: set `DJANGO_DEBUG=0`.
+- Production debug warning: set `DEBUG=false`.
 
 ## Responsible AI Boundaries
 

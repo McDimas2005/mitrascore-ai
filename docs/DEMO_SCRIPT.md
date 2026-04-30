@@ -25,6 +25,32 @@ All demo passwords are `Demo123!`.
 - Analyst: `analyst@mitrascore.demo`
 - Admin: `admin@mitrascore.demo`
 
+## Deployed Demo Setup
+
+For the deployed architecture:
+
+- Frontend: Vercel URL.
+- Backend: `https://<app-name>.azurewebsites.net`.
+- Database: Neon PostgreSQL.
+- Files: Azure Blob private container.
+- Frontend env: `NEXT_PUBLIC_API_URL=https://<app-name>.azurewebsites.net`.
+
+Before the demo, run on the backend:
+
+```bash
+python manage.py migrate
+python manage.py collectstatic --noinput
+python manage.py seed_demo_data
+```
+
+Smoke test:
+
+```bash
+curl https://<app-name>.azurewebsites.net/api/health/
+```
+
+Confirm `database_reachable` is `true`.
+
 ## Pitch Track
 
 “MitraScore AI helps informal Indonesian UMKM turn everyday business evidence into an explainable Credit Readiness Score.
@@ -89,7 +115,9 @@ If Azure calls fail during the demo:
 USE_MOCK_AI=true
 ```
 
-Restart the API and rerun evidence processing. The local MVP remains stable without Azure credentials.
+Restart the Azure App Service and rerun evidence processing. The local MVP remains stable without Azure credentials.
+
+If Blob upload fails on Azure App Service, confirm `USE_AZURE_BLOB_STORAGE=true`, `AZURE_STORAGE_CONNECTION_STRING`, and `AZURE_STORAGE_CONTAINER_NAME`. Keep Blob enabled for deployed demos because App Service Free F1 local storage is limited.
 
 ## QA Checks
 

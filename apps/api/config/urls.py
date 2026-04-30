@@ -3,7 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
-from accounts.views import LoginView, MeView, RefreshView, RuntimeStatusView
+from accounts.views import HealthView, LoginView, MeView, RefreshView, RuntimeStatusView
 from borrowers.views import (
     AnalystCaseDetailView,
     AnalystCasesView,
@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/auth/login/", LoginView.as_view()),
     path("api/auth/refresh/", RefreshView.as_view()),
     path("api/auth/me/", MeView.as_view()),
+    path("api/health/", HealthView.as_view()),
     path("api/runtime-status/", RuntimeStatusView.as_view()),
     path("api/borrower-profiles/", BorrowerProfileListCreateView.as_view()),
     path("api/borrower-profiles/request-field-agent-assist/", RequestFieldAgentAssistView.as_view()),

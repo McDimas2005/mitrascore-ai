@@ -1,4 +1,5 @@
 import uuid
+from io import BytesIO
 from pathlib import Path
 
 from django.conf import settings
@@ -7,6 +8,15 @@ from django.utils.text import get_valid_filename
 from audit.services import log_action
 
 from .models import StorageBackend
+
+
+class InMemoryEvidenceFile(BytesIO):
+    def open(self, *args, **kwargs):
+        self.seek(0)
+        return self
+
+    def close(self):
+        self.seek(0)
 
 
 def sanitize_upload_filename(filename):
@@ -86,3 +96,19 @@ def store_uploaded_evidence(upload, profile, actor):
 
     log_action(actor, "BLOB_UPLOAD_SUCCEEDED", profile, {"borrower_profile": profile.id, "blob_name": blob_name, "container_private": True})
     return StorageBackend.AZURE_BLOB, blob_name
+
+
+def evidence_file_for_processing(evidence_item):
+    if evidence_item.storage_backend == StorageBackend.AZURE_BLOB and evidence_item.storage_reference and azure_blob_enabled():
+        try:
+            from azure.storage.blob import BlobServiceClient
+        except ImportError as exc:
+            raise RuntimeError("azure-storage-blob package is not installed") from exc
+        service = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+        blob_client = service.get_blob_client(
+            container=settings.AZURE_STORAGE_CONTAINER_NAME,
+            blob=evidence_item.storage_reference,
+        )
+        data = blob_client.download_blob().readall()
+        return InMemoryEvidenceFile(data)
+    return evidence_item.file

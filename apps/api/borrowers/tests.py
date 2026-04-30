@@ -1,6 +1,8 @@
 from decimal import Decimal
 import tempfile
+from unittest.mock import patch
 
+from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -381,6 +383,23 @@ class MitraScoreFlowTests(TestCase):
         self.assertEqual(response.data["storage_backend"], StorageBackend.LOCAL)
         self.assertTrue(AuditLog.objects.filter(action="BLOB_UPLOAD_FALLBACK_LOCAL", entity_id=str(self.profile.id)).exists())
 
+    @patch("evidence.views.store_uploaded_evidence")
+    def test_successful_blob_upload_does_not_depend_on_local_media_file(self, mocked_store):
+        mocked_store.return_value = (StorageBackend.AZURE_BLOB, "evidence/profile-1/blob-receipt.pdf")
+        self.give_consent()
+        self.client.force_authenticate(self.owner)
+        upload = SimpleUploadedFile("receipt.pdf", b"demo", content_type="application/pdf")
+        response = self.client.post(
+            f"/api/borrower-profiles/{self.profile.id}/evidence/",
+            {"evidence_type": EvidenceType.RECEIPT, "source_type": SourceType.SELF_UPLOADED, "file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        item = EvidenceItem.objects.get(pk=response.data["id"])
+        self.assertEqual(item.storage_backend, StorageBackend.AZURE_BLOB)
+        self.assertEqual(item.storage_reference, "evidence/profile-1/blob-receipt.pdf")
+        self.assertFalse(item.file.name)
+
     def test_upload_file_validation_blocks_unsafe_extension(self):
         self.give_consent()
         self.client.force_authenticate(self.owner)
@@ -447,6 +466,14 @@ class MitraScoreFlowTests(TestCase):
         response = self.client.get("/api/borrower-profiles/")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(any(profile["id"] == self.profile.id for profile in response.data))
+
+    def test_health_endpoint_reports_runtime_and_database_status(self):
+        response = self.client.get("/api/health/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["app"], "MitraScore AI API")
+        self.assertTrue(response.data["database_reachable"])
+        self.assertIn("mock_ai_mode", response.data)
+        self.assertIn("blob_mode", response.data)
 
     def test_evidence_source_types_are_explained_and_verified_requires_note(self):
         self.give_consent()
@@ -759,3 +786,19 @@ class MitraScoreEndToEndApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data["final_human_decision"], "APPROVED_FOR_FINANCING")
         self.assertEqual(BorrowerProfile.objects.get(pk=profile_id).status, "REVIEWED")
+
+
+class SeedDemoDataCommandTests(TestCase):
+    def test_seed_demo_data_is_idempotent(self):
+        call_command("seed_demo_data", verbosity=0)
+        call_command("seed_demo_data", verbosity=0)
+
+        self.assertEqual(User.objects.filter(email="umkm@mitrascore.demo").count(), 1)
+        self.assertEqual(User.objects.filter(email="umkm2@mitrascore.demo").count(), 1)
+        self.assertEqual(User.objects.filter(email="fieldagent@mitrascore.demo").count(), 1)
+        self.assertEqual(User.objects.filter(email="analyst@mitrascore.demo").count(), 1)
+        self.assertEqual(User.objects.filter(email="admin@mitrascore.demo").count(), 1)
+        self.assertEqual(BorrowerProfile.objects.filter(business_name="Warung Ibu Sari").count(), 1)
+        profile = BorrowerProfile.objects.get(business_name="Warung Ibu Sari")
+        self.assertEqual(profile.instant_checks.count(), 1)
+        self.assertEqual(profile.reviews.count(), 1)

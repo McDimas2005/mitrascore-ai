@@ -2,6 +2,7 @@ from django.conf import settings
 
 from audit.services import log_action
 from evidence.models import AIExtractionResult, AIStatus, EvidenceType
+from evidence.storage import evidence_file_for_processing
 
 from .azure_clients import AzureAIClientError, AzureDocumentIntelligenceClient, AzureVisionClient
 from .mock_clients import MockDocumentIntelligenceClient, MockLanguageClient, MockSearchClient, MockVisionClient
@@ -87,7 +88,12 @@ def _process_azure_vision(evidence_item, actor=None):
         return _failure_result(evidence_item, "AzureVisionClientUnavailable", message)
     client = AzureVisionClient(settings.AZURE_AI_VISION_ENDPOINT, settings.AZURE_AI_VISION_KEY)
     try:
-        vision = client.analyze_image(evidence_item.file, evidence_item.original_filename, evidence_item.evidence_type, evidence_item.mime_type)
+        vision = client.analyze_image(
+            evidence_file_for_processing(evidence_item),
+            evidence_item.original_filename,
+            evidence_item.evidence_type,
+            evidence_item.mime_type,
+        )
     except AzureAIClientError as exc:
         message = str(exc)
         log_action(actor, "AI_PROCESSING_FAILED", evidence_item, {"borrower_profile": evidence_item.borrower_profile_id, "service": client.service_name, "error": message})
@@ -126,7 +132,12 @@ def _process_azure_document(evidence_item, actor=None):
         return _failure_result(evidence_item, "AzureDocumentIntelligenceClientUnavailable", message)
     client = AzureDocumentIntelligenceClient(settings.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT, settings.AZURE_DOCUMENT_INTELLIGENCE_KEY)
     try:
-        document = client.extract_document(evidence_item.file, evidence_item.original_filename, evidence_item.evidence_type, evidence_item.mime_type)
+        document = client.extract_document(
+            evidence_file_for_processing(evidence_item),
+            evidence_item.original_filename,
+            evidence_item.evidence_type,
+            evidence_item.mime_type,
+        )
     except AzureAIClientError as exc:
         message = str(exc)
         log_action(actor, "AI_PROCESSING_FAILED", evidence_item, {"borrower_profile": evidence_item.borrower_profile_id, "service": client.service_name, "error": message})

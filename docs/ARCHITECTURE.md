@@ -56,7 +56,7 @@ When `USE_MOCK_AI=false`:
 - Analysts cannot upload or process evidence.
 - Final declined or approved cases are locked for normal owner/field-agent edits.
 - CORS is environment-based.
-- Production must use `DJANGO_DEBUG=0`.
+- Production must use `DEBUG=false`.
 - Secrets are provided only through environment variables.
 
 ## Responsible AI Flow
@@ -82,6 +82,27 @@ flowchart LR
   A --> B[(Azure Blob Storage<br/>private container, optional)]
   A --> L[AuditLog]
 ```
+
+## Deployed Architecture: Vercel + App Service + Neon
+
+```mermaid
+flowchart LR
+  U[UMKM Owner / Field Agent / Analyst] --> V[Vercel<br/>Next.js frontend]
+  V -->|NEXT_PUBLIC_API_URL| API[Azure App Service Free F1<br/>Django REST API + Gunicorn]
+  API -->|DATABASE_URL sslmode=require| N[(Neon PostgreSQL)]
+  API -->|private blob upload| B[(Azure Blob Storage<br/>private container)]
+  API -->|business photo analysis| VIS[Azure AI Vision]
+  API -->|OCR / receipt / invoice / QRIS extraction| DOC[Azure Document Intelligence]
+  API -->|USE_MOCK_AI=true fallback| MOCK[Mock AI adapters]
+  API --> AUD[AuditLog records]
+```
+
+Deployment constraints:
+
+- Azure App Service Free F1 is for demo/trial use and may cold start or sleep.
+- Production evidence storage should use Azure Blob because local App Service storage is limited.
+- Neon is reached only from the backend through `DATABASE_URL`; the frontend never receives database credentials.
+- Vercel receives only `NEXT_PUBLIC_API_URL`.
 
 ## Future Optional Extensions
 

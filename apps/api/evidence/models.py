@@ -35,7 +35,7 @@ class EvidenceItem(models.Model):
     borrower_profile = models.ForeignKey("borrowers.BorrowerProfile", related_name="evidence_items", on_delete=models.CASCADE)
     evidence_type = models.CharField(max_length=32, choices=EvidenceType.choices)
     source_type = models.CharField(max_length=32, choices=SourceType.choices, default=SourceType.SELF_UPLOADED)
-    file = models.FileField(upload_to="evidence/")
+    file = models.FileField(upload_to="evidence/", blank=True)
     original_filename = models.CharField(max_length=255)
     mime_type = models.CharField(max_length=120, blank=True)
     file_size = models.PositiveIntegerField(default=0)
