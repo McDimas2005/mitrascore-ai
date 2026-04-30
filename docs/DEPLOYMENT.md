@@ -1,15 +1,15 @@
-# Deployment Guide: Azure App Service F1 + Vercel + Neon
+# Deployment Guide: Azure App Service B1 + Vercel + Neon
 
 This guide targets the exact demo architecture:
 
-- Backend: Azure App Service Free F1, Linux, Python runtime.
+- Backend: Azure App Service Basic B1, Linux, Python runtime.
 - Frontend: Vercel.
 - Database: Neon PostgreSQL.
 - File storage: Azure Blob Storage private container.
 - AI: Azure AI Vision and Azure Document Intelligence, with mock fallback.
 - Emergency fallback: `USE_MOCK_AI=true`.
 
-Do not deploy AKS, Kubernetes, GPU, Azure ML compute, Container Apps, Azure AI Search, Azure AI Language, Azure OpenAI, or Azure PostgreSQL for this demo.
+Do not deploy AKS, Kubernetes, GPU, Azure ML compute, Container Apps, Azure AI Search, Azure AI Language, Azure OpenAI, or Azure PostgreSQL for this demo unless the scope changes.
 
 ## 1. Neon PostgreSQL
 
@@ -29,9 +29,20 @@ Notes:
 - The backend also supports `DATABASE_SSL_REQUIRE=true` if a URL does not include SSL mode.
 - Run migrations after the App Service is deployed.
 
-## 2. Azure App Service Free F1 Backend
+## 2. Azure App Service B1 Backend
 
-Create a Linux App Service with Python runtime. Free F1 is acceptable for a hackathon demo, but it may sleep, cold start slowly, and is not a production SLA environment. Do not rely on persistent local file storage in production; use Azure Blob Storage.
+Create a Linux App Service with Python 3.12 runtime on the Basic B1 pricing plan. B1 is appropriate for a more stable demo because Always On is available, but do not rely on local App Service storage for uploaded evidence; use Azure Blob Storage.
+
+Recommended platform settings:
+
+```text
+Runtime stack: Python 3.12
+Pricing plan: Basic B1
+Always On: On
+HTTPS Only: On
+Remote build/Oryx: SCM_DO_BUILD_DURING_DEPLOYMENT=true
+Startup command: gunicorn config.wsgi:application --bind=0.0.0.0:8000 --timeout 600
+```
 
 ### App Service Settings
 
@@ -80,6 +91,32 @@ gunicorn config.wsgi:application --bind=0.0.0.0:8000 --timeout 600
 ```
 
 If you need a one-time migration during setup, run it from SSH/Kudu instead of putting migrations permanently into the startup command.
+
+### GitHub Actions Deployment
+
+The backend deployment workflow is `.github/workflows/master_app-mitrascore-api-demo.yml`.
+
+It intentionally:
+
+- works from `apps/api`, where `requirements.txt` and `manage.py` live;
+- runs backend tests before deployment;
+- runs `collectstatic` so Django admin/static assets are packaged;
+- deploys only the API folder to Azure App Service;
+- supports either `AZURE_WEBAPP_PUBLISH_PROFILE` or the Azure-generated publish profile secret already created by Deployment Center.
+
+Recommended GitHub secret:
+
+```text
+AZURE_WEBAPP_PUBLISH_PROFILE=<downloaded Azure App Service publish profile XML>
+```
+
+The current App Service name in the workflow is:
+
+```text
+app-mitrascore-api-demo
+```
+
+If the Azure app name changes, update `AZURE_WEBAPP_NAME` in that workflow.
 
 ### Install and Build
 
@@ -163,14 +200,15 @@ If Azure processing fails, evidence gets a failed-processing state and audit log
 2. Set root directory: `apps/web`.
 3. Framework preset: Next.js.
 4. Build command: `npm run build`.
-5. Output: default Vercel Next.js output.
-6. Set environment variable:
+5. Install command: `npm ci`.
+6. Output: default Vercel Next.js output.
+7. Set environment variable:
 
 ```text
 NEXT_PUBLIC_API_URL=https://<app-name>.azurewebsites.net
 ```
 
-The frontend appends `/api` internally. Do not include secrets in Vercel env vars.
+The frontend appends `/api` internally. Do not include secrets in Vercel env vars. After the first production deployment, copy the Vercel production URL into the Azure CORS and CSRF settings.
 
 ## 6. CORS and CSRF
 
@@ -217,7 +255,7 @@ Frontend:
 ## 8. Rollback and Fallback
 
 - Azure AI outage: set `USE_MOCK_AI=true`, restart App Service, rerun evidence processing.
-- Blob issue: set `USE_AZURE_BLOB_STORAGE=false` only for local/emergency debugging. For App Service Free F1, restore Blob as soon as possible because local file persistence is limited.
+- Blob issue: set `USE_AZURE_BLOB_STORAGE=false` only for local/emergency debugging. For App Service B1, restore Blob as soon as possible because local App Service storage is not the production evidence store.
 - Bad deploy: use Azure App Service deployment center rollback or redeploy the previous commit.
 - Database issue: verify Neon is active, pooled URL is correct, and SSL mode is required.
 

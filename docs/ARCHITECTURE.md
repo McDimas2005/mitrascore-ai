@@ -88,7 +88,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   U[UMKM Owner / Field Agent / Analyst] --> V[Vercel<br/>Next.js frontend]
-  V -->|NEXT_PUBLIC_API_URL| API[Azure App Service Free F1<br/>Django REST API + Gunicorn]
+  V -->|NEXT_PUBLIC_API_URL| API[Azure App Service B1<br/>Django REST API + Gunicorn]
   API -->|DATABASE_URL sslmode=require| N[(Neon PostgreSQL)]
   API -->|private blob upload| B[(Azure Blob Storage<br/>private container)]
   API -->|business photo analysis| VIS[Azure AI Vision]
@@ -99,7 +99,7 @@ flowchart LR
 
 Deployment constraints:
 
-- Azure App Service Free F1 is for demo/trial use and may cold start or sleep.
+- Azure App Service Basic B1 keeps the backend on a modest paid tier with Always On available for demos.
 - Production evidence storage should use Azure Blob because local App Service storage is limited.
 - Neon is reached only from the backend through `DATABASE_URL`; the frontend never receives database credentials.
 - Vercel receives only `NEXT_PUBLIC_API_URL`.

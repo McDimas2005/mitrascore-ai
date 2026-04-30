@@ -142,7 +142,7 @@ By default this deletes local uploaded media under `apps/api/media`. Use `--keep
 Recommended deployment:
 
 - Frontend: Vercel.
-- Backend: Azure App Service Free F1, Linux, Python runtime.
+- Backend: Azure App Service Basic B1, Linux, Python runtime.
 - Database: Neon PostgreSQL using `DATABASE_URL`.
 - Evidence files: Azure Blob private container.
 - Emergency fallback: set `USE_MOCK_AI=true`.
@@ -155,6 +155,7 @@ Backend production notes:
 - Set a strong `SECRET_KEY`.
 - Set `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` to real deployed domains.
 - Keep Azure keys in platform secrets, not in git.
+- Keep App Service Always On enabled on the B1 plan.
 - Azure startup command: `gunicorn config.wsgi:application --bind=0.0.0.0:8000 --timeout 600`.
 - First deployment commands: `python manage.py migrate`, `python manage.py collectstatic --noinput`, and `python manage.py seed_demo_data`.
 
